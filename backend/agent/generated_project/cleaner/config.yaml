@@ -1,0 +1,8 @@
+log_file: "${HOME}/cleaner.log"
+exclusions:
+  - ".git"
+  - "__pycache__"
+  - "*.pyc"
+
+dry_run: false
+confirm: true

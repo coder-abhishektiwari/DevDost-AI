@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Calculator</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="script.js" defer></script>
+</head>
+<body>
+    <div id="calculator" class="calculator">
+        <div id="display" class="display" aria-live="polite" role="textbox">0</div>
+        <div class="buttons-grid">
+            <!-- Row 1 -->
+            <button type="button" class="calc-button" data-value="C" data-type="action" aria-label="Clear">C</button>
+            <button type="button" class="calc-button" data-value="←" data-type="action" aria-label="Backspace">←</button>
+            <button type="button" class="calc-button" data-value="/" data-type="operator" aria-label="Divide">/</button>
+            <button type="button" class="calc-button" data-value="*" data-type="operator" aria-label="Multiply">*</button>
+            <!-- Row 2 -->
+            <button type="button" class="calc-button" data-value="7" data-type="digit" aria-label="7">7</button>
+            <button type="button" class="calc-button" data-value="8" data-type="digit" aria-label="8">8</button>
+            <button type="button" class="calc-button" data-value="9" data-type="digit" aria-label="9">9</button>
+            <button type="button" class="calc-button" data-value="-" data-type="operator" aria-label="Subtract">-</button>
+            <!-- Row 3 -->
+            <button type="button" class="calc-button" data-value="4" data-type="digit" aria-label="4">4</button>
+            <button type="button" class="calc-button" data-value="5" data-type="digit" aria-label="5">5</button>
+            <button type="button" class="calc-button" data-value="6" data-type="digit" aria-label="6">6</button>
+            <button type="button" class="calc-button" data-value="+" data-type="operator" aria-label="Add">+</button>
+            <!-- Row 4 -->
+            <button type="button" class="calc-button" data-value="1" data-type="digit" aria-label="1">1</button>
+            <button type="button" class="calc-button" data-value="2" data-type="digit" aria-label="2">2</button>
+            <button type="button" class="calc-button" data-value="3" data-type="digit" aria-label="3">3</button>
+            <button type="button" class="calc-button" data-value="=" data-type="action" aria-label="Equals">=</button>
+            <!-- Row 5 -->
+            <button type="button" class="calc-button" data-value="0" data-type="digit" aria-label="0" style="grid-column: span 2;">0</button>
+            <button type="button" class="calc-button" data-value="." data-type="digit" aria-label="Decimal point">.</button>
+        </div>
+    </div>
+</body>
+</html>
