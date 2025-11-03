@@ -1,0 +1,20 @@
+{
+  "name": "chat-web-app",
+  "version": "1.0.0",
+  "description": "A simple chat web application using Express and Socket.io",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "express": "*",
+    "socket.io": "*"
+  },
+  "devDependencies": {
+    "nodemon": "*"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

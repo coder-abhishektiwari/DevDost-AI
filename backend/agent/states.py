@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List, Dict
 from pydantic import BaseModel, Field, ConfigDict
 
 class File(BaseModel):
@@ -6,9 +6,9 @@ class File(BaseModel):
     purpose: str = Field(description="The purpose of the file, eg. 'main application logic', 'data processing module', etc.")
 
 class Plan(BaseModel):
-    name: str = Field(description="The name of the app to be built")
-    description: str = Field(description="A one line description of the app to be built, eg. 'A web application for managing person finances'")
-    techstack: str = Field(description="The tech stack to be used for the app. e.g. 'python', 'javascript', 'react', 'react', 'flask', etc.")
+    name: str = Field(description="The name of the app/project to be built")
+    description: str = Field(description="A one line description of the app to be built, eg. 'A web application for managing personal finances'")
+    techstack: str = Field(description="The tech stack to be used for the app. e.g. 'python', 'javascript', 'react', 'flask', etc.")
     features: list[str] = Field(description="A list of features that the app should have, e.g. 'user authentication', 'data visualization', etc.")
     files: list[File] = Field(description="A list of files to be created, each with a 'path' and 'purpose'")
 
@@ -24,3 +24,14 @@ class CoderState(BaseModel):
     task_plan: TaskPlan = Field(description="The plan for the task to be implemented")
     current_step_idx: int = Field(0, description="The index of the current step in the implementation steps")
     current_file_content: Optional[str] = Field(None, description="The content of the file currently being edited or created")
+    project_name: Optional[str] = Field(None, description="The name of the project being worked on")
+
+class ChatMessage(BaseModel):
+    role: str = Field(description="The role of the message sender: 'user' or 'assistant'")
+    content: str = Field(description="The content of the message")
+
+class ProjectInfo(BaseModel):
+    name: str = Field(description="Project name")
+    path: str = Field(description="Project path")
+    file_count: int = Field(0, description="Number of files in project")
+    created_at: Optional[str] = Field(None, description="Project creation timestamp")
