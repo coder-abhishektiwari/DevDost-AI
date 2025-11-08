@@ -139,10 +139,6 @@ def test():
         "projects": list_all_projects()
     })
 
-# ✅ SOCKET-BASED CHAT HANDLER (NO THREADING)
-# In app.py - REPLACE the @socketio.on("chat_message") handler
-
-# ✅ ADD THIS SOCKET.IO HANDLER
 @socketio.on("chat_message")
 def handle_chat_message(data):
     try:
@@ -213,7 +209,6 @@ def handle_chat_message(data):
         print("❌ Chat error:", e)
         socketio.emit("chat_error", {"error": str(e)})
 
-# ✅ HTTP fallback endpoint
 @app.route("/chat", methods=["POST"])
 def chat_http():
     """HTTP fallback for chat"""
