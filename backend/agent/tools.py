@@ -66,7 +66,7 @@ def create_file_tool(project_name: str, filepath: str, content: str = "") -> str
     with open(p, "w", encoding="utf-8") as f:
         f.write(content)
     
-    return f"✅ Created: {project_name}/{filepath}"
+    return f"âœ… Created: {project_name}/{filepath}"
 
 
 @tool
@@ -97,14 +97,14 @@ def delete_file_tool(project_name: str, filepath: str) -> str:
     p = safe_path_for_project(project_name, filepath)
     
     if not p.exists():
-        return f"❌ File not found: {filepath}"
+        return f"âŒ File not found: {filepath}"
     
     if p.is_file():
         p.unlink()
-        return f"🗑️ Deleted: {project_name}/{filepath}"
+        return f"ðŸ—‘ï¸ Deleted: {project_name}/{filepath}"
     elif p.is_dir():
         shutil.rmtree(p)
-        return f"🗑️ Deleted directory: {project_name}/{filepath}"
+        return f"ðŸ—‘ï¸ Deleted directory: {project_name}/{filepath}"
 
 
 @tool
@@ -120,12 +120,12 @@ def rename_file_tool(project_name: str, old_path: str, new_path: str) -> str:
     new_p = safe_path_for_project(project_name, new_path)
     
     if not old_p.exists():
-        return f"❌ File not found: {old_path}"
+        return f"âŒ File not found: {old_path}"
     
     new_p.parent.mkdir(parents=True, exist_ok=True)
     old_p.rename(new_p)
     
-    return f"✏️ Renamed: {old_path} → {new_path}"
+    return f"âœï¸ Renamed: {old_path} â†’ {new_path}"
 
 
 @tool
@@ -139,7 +139,7 @@ def list_project_files_tool(project_name: str, directory: str = ".") -> str:
     p = safe_path_for_project(project_name, directory)
     
     if not p.is_dir():
-        return f"❌ Not a directory: {directory}"
+        return f"âŒ Not a directory: {directory}"
     
     files = []
     for item in p.rglob("*"):
@@ -148,7 +148,7 @@ def list_project_files_tool(project_name: str, directory: str = ".") -> str:
             files.append(str(rel_path))
     
     if not files:
-        return "📁 No files found"
+        return "ðŸ“ No files found"
     
     return "\n".join(sorted(files))
 
@@ -166,12 +166,12 @@ def move_file_tool(project_name: str, source: str, destination: str) -> str:
     dst_p = safe_path_for_project(project_name, destination)
     
     if not src_p.exists():
-        return f"❌ File not found: {source}"
+        return f"âŒ File not found: {source}"
     
     dst_p.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(src_p), str(dst_p))
     
-    return f"📦 Moved: {source} → {destination}"
+    return f"ðŸ“¦ Moved: {source} â†’ {destination}"
 
 
 @tool
@@ -187,7 +187,7 @@ def copy_file_tool(project_name: str, source: str, destination: str) -> str:
     dst_p = safe_path_for_project(project_name, destination)
     
     if not src_p.exists():
-        return f"❌ File not found: {source}"
+        return f"âŒ File not found: {source}"
     
     dst_p.parent.mkdir(parents=True, exist_ok=True)
     
@@ -196,7 +196,7 @@ def copy_file_tool(project_name: str, source: str, destination: str) -> str:
     else:
         shutil.copytree(str(src_p), str(dst_p))
     
-    return f"📋 Copied: {source} → {destination}"
+    return f"ðŸ“‹ Copied: {source} â†’ {destination}"
 
 
 # ==================== PROJECT-LEVEL OPERATIONS ====================
@@ -211,10 +211,10 @@ def delete_project_tool(project_name: str) -> str:
     project_path = get_project_path(project_name)
     
     if not project_path.exists():
-        return f"❌ Project not found: {project_name}"
+        return f"âŒ Project not found: {project_name}"
     
     shutil.rmtree(project_path)
-    return f"🗑️ Deleted project: {project_name}"
+    return f"ðŸ—‘ï¸ Deleted project: {project_name}"
 
 
 @tool
@@ -223,9 +223,9 @@ def list_projects_tool() -> str:
     projects = list_all_projects()
     
     if not projects:
-        return "📁 No projects found"
+        return "ðŸ“ No projects found"
     
-    return "📁 Available projects:\n" + "\n".join([f"  • {p}" for p in projects])
+    return "ðŸ“ Available projects:\n" + "\n".join([f"  â€¢ {p}" for p in projects])
 
 
 @tool
@@ -236,7 +236,7 @@ def get_project_info_tool(project_name: str) -> str:
         project_name: Name of the project
     """
     if not project_exists(project_name):
-        return f"❌ Project not found: {project_name}"
+        return f"âŒ Project not found: {project_name}"
     
     project_path = get_project_path(project_name)
     files = list(project_path.rglob("*"))
@@ -244,10 +244,10 @@ def get_project_info_tool(project_name: str) -> str:
     dir_count = len([f for f in files if f.is_dir()])
     
     info = f"""
-📦 Project: {project_name}
-📂 Path: {project_path}
-📄 Files: {file_count}
-📁 Directories: {dir_count}
+ðŸ“¦ Project: {project_name}
+ðŸ“‚ Path: {project_path}
+ðŸ“„ Files: {file_count}
+ðŸ“ Directories: {dir_count}
 """
     return info.strip()
 
@@ -266,7 +266,7 @@ def run_cmd_tool(project_name: str, cmd: str, timeout: int = 30) -> str:
     project_path = get_project_path(project_name)
     
     if not project_path.exists():
-        return f"❌ Project not found: {project_name}"
+        return f"âŒ Project not found: {project_name}"
     
     try:
         result = subprocess.run(
@@ -286,9 +286,9 @@ def run_cmd_tool(project_name: str, cmd: str, timeout: int = 30) -> str:
         
         return output
     except subprocess.TimeoutExpired:
-        return f"❌ Command timed out after {timeout}s"
+        return f"âŒ Command timed out after {timeout}s"
     except Exception as e:
-        return f"❌ Error: {str(e)}"
+        return f"âŒ Error: {str(e)}"
 
 
 # ==================== BACKWARD COMPATIBILITY ====================

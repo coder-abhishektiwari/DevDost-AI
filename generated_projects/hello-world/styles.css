@@ -1,0 +1,15 @@
+/* Basic styling for the hello world page */
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f0f0f0;
+    margin: 0;
+    padding: 0;
+}
+
+#hello-message {
+    font-size: 24px;
+    color: #00698f;
+    text-align: center;
+    margin-top: 20vh;
+}

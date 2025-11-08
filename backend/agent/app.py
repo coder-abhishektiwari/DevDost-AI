@@ -1,69 +1,91 @@
 from flask_socketio import SocketIO, emit
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-import os, time, threading, shutil, zipfile, subprocess, signal
+import os, time, shutil, zipfile, subprocess
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import json
 from pathlib import Path
+import tempfile
+import psutil
 
-# Import your enhanced agent
 try:
     from graph import agent
-    print("✅ Loaded agent from graph.py")
-except ImportError:
-    try:
-        from simple_agent import agent
-        print("✅ Loaded simple mock agent")
-    except ImportError:
-        agent = None
-        print("⚠️ Warning: No agent available. Chat will use basic responses.")
+    print("✅ Loaded self-healing agent")
+    AGENT_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ Agent not available: {e}")
+    agent = None
+    AGENT_AVAILABLE = False
 
 from tools import PROJECTS_ROOT, get_project_path, list_all_projects, project_exists
 
-# Flask app setup
 app = Flask(__name__)
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
-# Session management
-CURRENT_PROJECTS = {}  # {session_id: project_name}
-RUNNING_PROCESSES = {}  # {project_name: subprocess}
+CURRENT_PROJECTS = {}
+RUNNING_PROCESSES = {}
+MAX_FILE_SIZE = 1024 * 1024
 
-# ========================= HELPER FUNCTIONS =========================
+def safe_write_file(file_path, content):
+    """Atomically write file to prevent corruption"""
+    file_path = Path(file_path)
+    temp_fd, temp_path = tempfile.mkstemp(
+        dir=file_path.parent,
+        prefix=".tmp_",
+        suffix=file_path.suffix
+    )
+
+    try:
+        with os.fdopen(temp_fd, 'w', encoding='utf-8') as f:
+            f.write(content)
+        os.replace(temp_path, file_path)
+        return True
+    except Exception as e:
+        try:
+            os.unlink(temp_path)
+        except:
+            pass
+        raise e
+
 def get_all_files(project_name=None):
-    """Get all files from a project or all projects"""
+    """Get all files from a project"""
     files_data = []
     file_id = 1
-    
+
     if project_name:
         projects = [project_name] if project_exists(project_name) else []
     else:
         projects = list_all_projects()
-    
+
     for proj in projects:
         project_path = get_project_path(proj)
-        
         if not project_path.exists():
             continue
-        
+
         for root, dirs, files in os.walk(project_path):
-            # Skip node_modules and other common directories
-            dirs[:] = [d for d in dirs if d not in ['node_modules', '.git', '__pycache__', 'dist', 'build']]
-            
+            dirs[:] = [d for d in dirs if d not in ['node_modules', '.git', '__pycache__', 'dist', 'build', 'venv']]
+
             for file in files:
                 try:
                     file_path = os.path.join(root, file)
-                    
-                    # Skip binary files
+
                     if file.endswith(('.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.woff', '.woff2', '.ttf', '.eot')):
                         continue
-                    
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        content = f.read()
-                    
+
+                    file_size = os.path.getsize(file_path)
+                    if file_size > MAX_FILE_SIZE:
+                        print(f"⚠️ Skipping large file: {file} ({file_size / 1024:.1f}KB)")
+                        continue
+
+                    try:
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            content = f.read()
+                    except UnicodeDecodeError:
+                        continue
+
                     rel_path = os.path.relpath(file_path, project_path)
-                    
                     files_data.append({
                         "id": file_id,
                         "name": rel_path,
@@ -75,87 +97,39 @@ def get_all_files(project_name=None):
                     file_id += 1
                 except Exception as e:
                     print(f"❌ Error reading {file}: {e}")
-    
+
     return files_data
 
-
-def send_ai_status(message):
-    """Send AI status update to frontend"""
-    print(f"🤖 AI Status: {message}")
-    socketio.emit("ai_step", {"message": message})
-    time.sleep(0.2)
-
-
 def detect_project_type(project_path):
-    """Detect project type based on files"""
+    """Detect project type"""
     project_path = Path(project_path)
-    
-    # Check for package.json (React/Next.js)
+
     if (project_path / "package.json").exists():
-        with open(project_path / "package.json", "r") as f:
-            package_data = json.load(f)
-            dependencies = package_data.get("dependencies", {})
-            
-            if "next" in dependencies:
-                return "nextjs"
-            elif "react" in dependencies:
-                return "react"
-            else:
-                return "nodejs"
-    
-    # Check for requirements.txt (Python)
+        try:
+            with open(project_path / "package.json", "r") as f:
+                package_data = json.load(f)
+                dependencies = package_data.get("dependencies", {})
+
+                if "next" in dependencies:
+                    return "nextjs"
+                elif "react" in dependencies:
+                    return "react"
+                else:
+                    return "nodejs"
+        except:
+            return "nodejs"
+
     if (project_path / "requirements.txt").exists():
         return "python"
-    
-    # Check for index.html (Static HTML)
+
     if (project_path / "index.html").exists():
         return "html"
-    
-    # Check for main.py or app.py
+
     if (project_path / "main.py").exists() or (project_path / "app.py").exists():
         return "python"
-    
+
     return "unknown"
 
-
-def run_project_command(project_name, project_type):
-    """Get the command to run based on project type"""
-    commands = {
-        "html": {
-            "command": "python -m http.server 8000",
-            "message": "Starting HTTP server on port 8000...",
-            "url": "http://localhost:8000"
-        },
-        "react": {
-            "command": "npm start",
-            "message": "Starting React development server...",
-            "url": "http://localhost:3000"
-        },
-        "nextjs": {
-            "command": "npm run dev",
-            "message": "Starting Next.js development server...",
-            "url": "http://localhost:3000"
-        },
-        "nodejs": {
-            "command": "npm start",
-            "message": "Starting Node.js application...",
-            "url": "http://localhost:3000"
-        },
-        "python": {
-            "command": "python main.py",
-            "message": "Running Python application...",
-            "url": None
-        }
-    }
-    
-    return commands.get(project_type, {
-        "command": None,
-        "message": f"Unknown project type: {project_type}",
-        "url": None
-    })
-
-
-# ========================= AI AGENT ENDPOINT =========================
 @app.route("/test", methods=["GET"])
 def test():
     """Test endpoint"""
@@ -165,109 +139,89 @@ def test():
         "projects": list_all_projects()
     })
 
+# ✅ SOCKET-BASED CHAT HANDLER (NO THREADING)
+# In app.py - REPLACE the @socketio.on("chat_message") handler
 
-@app.route("/chat", methods=["POST"])
-def chat_with_agent():
-    """Main chat endpoint - handles all user interactions"""
+# ✅ ADD THIS SOCKET.IO HANDLER
+@socketio.on("chat_message")
+def handle_chat_message(data):
     try:
-        data = request.get_json()
-        user_message = data.get("message")
+        user_message = data.get("message", "")
         session_id = data.get("session_id", "default")
-        
-        if not user_message:
-            return jsonify({"success": False, "error": "No message provided"}), 400
 
-        print(f"\n{'='*60}")
-        print(f"💬 User: {user_message}")
-        print(f"📱 Session: {session_id}")
-        print(f"{'='*60}\n")
-        
+        print("\n" + "="*60)
+        print(f"💬 USER: {user_message}")
+        print(f"🆔 Session: {session_id}")
+        print("="*60 + "\n")
+
         current_project = CURRENT_PROJECTS.get(session_id)
-        
-        # Simple responses if agent not available
-        if agent is None:
-            print("⚠️ Agent not configured - using simple responses")
-            
-            # Detect intent
-            msg_lower = user_message.lower()
-            
-            if any(word in msg_lower for word in ['create', 'build', 'make', 'generate']):
-                response = "🤖 I can help you create projects! However, the AI agent is not configured. Please set up the agent in graph.py to enable full functionality."
-            elif any(word in msg_lower for word in ['list', 'show', 'projects']):
-                projects = list_all_projects()
-                response = f"📁 Available projects: {', '.join(projects) if projects else 'None yet'}"
-            elif any(word in msg_lower for word in ['switch', 'change', 'open']):
-                response = "To switch projects, use the dropdown menu at the top."
-            else:
-                response = "👋 Hi! I'm DevDost AI. I can help you create and manage projects. Try asking me to 'create a landing page' or 'show all projects'."
-            
-            return jsonify({
-                "success": True,
-                "message": response,
-                "current_project": current_project,
-                "chat_history": data.get("chat_history", []) + [{"role": "assistant", "content": response}],
-                "status": "DONE"
-            })
-        
-        # Prepare state for agent
+
+        # ✅ realtime progress callback (MOST IMPORTANT)
+        def emit_progress_local(message, project_name=None, stage=None, thinking=False):
+            payload = {
+                "message": message,
+                "project": project_name,
+                "timestamp": time.time()
+            }
+
+            if stage:
+                payload["stage"] = stage
+    
+            if thinking:
+                payload["thinking"] = True
+
+            print(f"📡 Progress Emit: {payload}")
+            socketio.emit("ai_progress", payload, broadcast=True)
+            socketio.sleep(0.05)
+
+        # ✅ state inject
         state = {
-            "user_prompt": user_message,  # Agent expects 'user_prompt'
+            "user_prompt": user_message,
             "current_project": current_project,
-            "chat_history": data.get("chat_history", [])
+            "chat_history": data.get("chat_history", []),
+            "_emit_progress": emit_progress_local  # <- LIFELINE
         }
-        
-        print(f"🤖 Invoking agent with state: {state.keys()}")
-        
-        # Run the agent
-        try:
-            result = agent.invoke(state)
-            print(f"✅ Agent response received")
-        except Exception as agent_error:
-            print(f"❌ Agent error: {agent_error}")
-            import traceback
-            traceback.print_exc()
-            
-            return jsonify({
-                "success": False,
-                "error": f"Agent error: {str(agent_error)}"
-            }), 500
-        
-        # Update session project if changed
+
+        # agent START
+        socketio.emit("agent_started", {"message": "Processing..."})
+
+        result = agent.invoke(state, config={"recursion_limit":100})
+
+        # session save
         if result.get("current_project"):
             CURRENT_PROJECTS[session_id] = result["current_project"]
-            print(f"📂 Updated current project: {result['current_project']}")
-        
-        # Extract response
+
         chat_history = result.get("chat_history", [])
         response_message = ""
-        
-        if chat_history:
-            last_msg = chat_history[-1]
-            if last_msg.get("role") == "assistant":
-                response_message = last_msg.get("content", "")
-        
+
+        if chat_history and chat_history[-1]["role"] == "assistant":
+            response_message = chat_history[-1]["content"]
+
         if not response_message:
-            response_message = "✅ Done! Check your files."
-        
-        return jsonify({
+            response_message = "✅ Completed"
+
+        # FINAL RESPONSE
+        socketio.emit("chat_response", {
             "success": True,
             "message": response_message,
             "current_project": result.get("current_project"),
             "chat_history": chat_history,
-            "status": result.get("status", "PROCESSING")
+            "status": result.get("status", "DONE")
         })
 
     except Exception as e:
-        print(f"❌ Chat error: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        print("❌ Chat error:", e)
+        socketio.emit("chat_error", {"error": str(e)})
 
+# ✅ HTTP fallback endpoint
+@app.route("/chat", methods=["POST"])
+def chat_http():
+    """HTTP fallback for chat"""
+    return jsonify({
+        "success": False,
+        "message": "Please use Socket.IO 'chat_message' event for real-time chat"
+    }), 400
 
-# ========================= PROJECT MANAGEMENT =========================
 @app.route("/projects", methods=["GET"])
 def get_projects():
     """Get list of all projects"""
@@ -277,54 +231,50 @@ def get_projects():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
 @app.route("/projects/<project_name>", methods=["GET"])
 def get_project_info(project_name):
-    """Get information about a specific project"""
+    """Get project info"""
     try:
         if not project_exists(project_name):
             return jsonify({"error": "Project not found"}), 404
-        
+
         files = get_all_files(project_name)
         project_path = get_project_path(project_name)
         project_type = detect_project_type(project_path)
-        
+        is_running = project_name in RUNNING_PROCESSES
+
         return jsonify({
             "name": project_name,
             "file_count": len(files),
             "files": files,
-            "type": project_type
+            "type": project_type,
+            "is_running": is_running
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 @app.route("/projects/<project_name>", methods=["DELETE"])
 def delete_project(project_name):
     """Delete a project"""
     try:
         project_path = get_project_path(project_name)
-        
         if not project_path.exists():
             return jsonify({"error": "Project not found"}), 404
-        
-        # Stop running process if exists
+
         if project_name in RUNNING_PROCESSES:
             stop_project(project_name)
-        
+
         shutil.rmtree(project_path)
-        
-        # Clear from sessions
+
         for sid in list(CURRENT_PROJECTS.keys()):
             if CURRENT_PROJECTS[sid] == project_name:
                 del CURRENT_PROJECTS[sid]
-        
+
         socketio.emit("project_deleted", {"name": project_name})
-        
+
         return jsonify({"success": True, "message": f"Project {project_name} deleted"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 @app.route("/projects/<project_name>/switch", methods=["POST"])
 def switch_project(project_name):
@@ -332,12 +282,12 @@ def switch_project(project_name):
     try:
         data = request.get_json()
         session_id = data.get("session_id", "default")
-        
+
         if not project_exists(project_name):
             return jsonify({"error": "Project not found"}), 404
-        
+
         CURRENT_PROJECTS[session_id] = project_name
-        
+
         return jsonify({
             "success": True,
             "current_project": project_name
@@ -345,169 +295,138 @@ def switch_project(project_name):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+def stop_project(project_name):
+    """Stop a running project and ALL child processes"""
+    if project_name in RUNNING_PROCESSES:
+        process = RUNNING_PROCESSES[project_name]
 
-# ========================= RUN PROJECT =========================
+        try:
+            parent = psutil.Process(process.pid)
+            children = parent.children(recursive=True)
+
+            for child in children:
+                try:
+                    child.terminate()
+                except psutil.NoSuchProcess:
+                    pass
+
+            parent.terminate()
+
+            gone, alive = psutil.wait_procs([parent] + children, timeout=5)
+
+            for p in alive:
+                try:
+                    p.kill()
+                except psutil.NoSuchProcess:
+                    pass
+
+        except psutil.NoSuchProcess:
+            pass
+        except Exception as e:
+            print(f"⚠️ Stop error: {e}")
+        finally:
+            del RUNNING_PROCESSES[project_name]
+            print(f"🛑 Stopped: {project_name}")
+            socketio.emit("project_status", {
+                "project": project_name,
+                "status": "stopped",
+                "message": "Project stopped"
+            })
+
 @app.route("/run_project", methods=["POST"])
 def run_project():
-    """Run the project based on its type"""
+    """Manual run endpoint"""
     try:
         data = request.get_json()
         project_name = data.get("project")
-        
+
         if not project_name:
             return jsonify({"success": False, "error": "No project specified"}), 400
-        
+
         if not project_exists(project_name):
             return jsonify({"success": False, "error": "Project not found"}), 404
-        
-        project_path = get_project_path(project_name)
-        project_type = detect_project_type(project_path)
-        
-        print(f"\n{'='*60}")
-        print(f"🚀 Running Project: {project_name}")
-        print(f"📦 Type: {project_type}")
-        print(f"{'='*60}\n")
-        
-        # Stop existing process if running
+
         if project_name in RUNNING_PROCESSES:
-            stop_project(project_name)
-        
-        # Get command for project type
-        run_config = run_project_command(project_name, project_type)
-        
-        if not run_config["command"]:
             return jsonify({
                 "success": False,
-                "error": f"Unknown project type: {project_type}"
+                "error": "Project already running"
             }), 400
-        
-        # For HTML projects, use Python's http.server
+
+        project_path = get_project_path(project_name)
+        project_type = detect_project_type(project_path)
+
+        socketio.emit("ai_progress", {
+            "message": f"🚀 Starting {project_name}...",
+            "project": project_name
+        })
+
         if project_type == "html":
-            try:
+            process = subprocess.Popen(
+                ["python", "-m", "http.server", "8000"],
+                cwd=str(project_path),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+
+            RUNNING_PROCESSES[project_name] = process
+
+            socketio.emit("project_status", {
+                "project": project_name,
+                "status": "running",
+                "message": "✅ Running at http://localhost:8000",
+                "url": "http://localhost:8000"
+            })
+
+            return jsonify({"success": True, "url": "http://localhost:8000"})
+
+        elif project_type in ["react", "nextjs"]:
+            port = 3000
+            cmd = ["npm", "start"] if project_type == "react" else ["npm", "run", "dev"]
+
+            env = {
+                "PATH": os.environ.get("PATH", ""),
+                "NODE_ENV": "development",
+                "BROWSER": "none"
+            }
+
+            if os.name == 'posix':
                 process = subprocess.Popen(
-                    ["python", "-m", "http.server", "8000"],
+                    cmd,
                     cwd=str(project_path),
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    text=True
+                    text=True,
+                    env=env,
+                    preexec_fn=os.setsid
                 )
-                
-                RUNNING_PROCESSES[project_name] = process
-                
-                return jsonify({
-                    "success": True,
-                    "message": run_config["message"],
-                    "url": run_config["url"],
-                    "type": project_type,
-                    "output": f"Server started on {run_config['url']}\nPress Ctrl+C to stop"
-                })
-            except Exception as e:
-                return jsonify({
-                    "success": False,
-                    "error": f"Failed to start server: {str(e)}"
-                }), 500
-        
-        # For Node.js projects (React, Next.js)
-        elif project_type in ["react", "nextjs", "nodejs"]:
-            # Check if node_modules exists
-            if not (project_path / "node_modules").exists():
-                return jsonify({
-                    "success": False,
-                    "error": "Dependencies not installed. Run 'npm install' first.",
-                    "output": "Please install dependencies:\n\nnpm install"
-                }), 400
-            
-            try:
+            else:
                 process = subprocess.Popen(
-                    run_config["command"].split(),
+                    cmd,
                     cwd=str(project_path),
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    text=True
+                    text=True,
+                    env=env,
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
                 )
-                
-                RUNNING_PROCESSES[project_name] = process
-                
-                return jsonify({
-                    "success": True,
-                    "message": run_config["message"],
-                    "url": run_config["url"],
-                    "type": project_type,
-                    "output": f"Starting {project_type} server...\nCheck {run_config['url']}"
-                })
-            except Exception as e:
-                return jsonify({
-                    "success": False,
-                    "error": f"Failed to start: {str(e)}"
-                }), 500
-        
-        # For Python projects
-        elif project_type == "python":
-            main_file = project_path / "main.py"
-            if not main_file.exists():
-                main_file = project_path / "app.py"
-            
-            if not main_file.exists():
-                return jsonify({
-                    "success": False,
-                    "error": "No main.py or app.py found"
-                }), 400
-            
-            try:
-                process = subprocess.Popen(
-                    ["python", main_file.name],
-                    cwd=str(project_path),
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True
-                )
-                
-                RUNNING_PROCESSES[project_name] = process
-                
-                # Wait a bit and capture initial output
-                time.sleep(1)
-                
-                return jsonify({
-                    "success": True,
-                    "message": "Running Python application",
-                    "url": None,
-                    "type": project_type,
-                    "output": f"Executing {main_file.name}...\nCheck terminal for output"
-                })
-            except Exception as e:
-                return jsonify({
-                    "success": False,
-                    "error": f"Failed to run: {str(e)}"
-                }), 500
-        
-        return jsonify({
-            "success": False,
-            "error": f"Project type {project_type} not supported yet"
-        }), 400
-        
+
+            RUNNING_PROCESSES[project_name] = process
+
+            socketio.emit("project_status", {
+                "project": project_name,
+                "status": "running",
+                "message": f"✅ Running at http://localhost:{port}",
+                "url": f"http://localhost:{port}"
+            })
+
+            return jsonify({"success": True, "url": f"http://localhost:{port}"})
+
+        return jsonify({"success": True, "message": "Project started"})
+
     except Exception as e:
         print(f"❌ Run error: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
-
-
-def stop_project(project_name):
-    """Stop a running project"""
-    if project_name in RUNNING_PROCESSES:
-        process = RUNNING_PROCESSES[project_name]
-        try:
-            process.terminate()
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-        
-        del RUNNING_PROCESSES[project_name]
-        print(f"🛑 Stopped project: {project_name}")
-
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/stop_project", methods=["POST"])
 def stop_project_endpoint():
@@ -515,41 +434,36 @@ def stop_project_endpoint():
     try:
         data = request.get_json()
         project_name = data.get("project")
-        
+
         if not project_name:
             return jsonify({"success": False, "error": "No project specified"}), 400
-        
+
+        if project_name not in RUNNING_PROCESSES:
+            return jsonify({"success": False, "error": "Project not running"}), 400
+
         stop_project(project_name)
-        
-        return jsonify({
-            "success": True,
-            "message": f"Stopped {project_name}"
-        })
+
+        return jsonify({"success": True, "message": f"Stopped {project_name}"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-# ========================= FILE OPERATIONS =========================
 @app.route("/get_files", methods=["GET"])
 def get_files():
     """Return all files"""
     try:
         project_name = request.args.get("project")
-        
+
         if not project_name:
             return jsonify([])
-        
+
         if not project_exists(project_name):
             return jsonify([])
-        
+
         files = get_all_files(project_name)
-        print(f"📁 Fetched {len(files)} files for project: {project_name}")
-        
         return jsonify(files)
     except Exception as e:
         print(f"❌ Get files error: {e}")
         return jsonify({"error": str(e)}), 500
-
 
 @app.route("/create_file", methods=["POST"])
 def create_file():
@@ -559,30 +473,24 @@ def create_file():
         project_name = data.get("project")
         name = data.get("name")
         content = data.get("content", "")
-        
+
         if not project_name or not name:
-            return jsonify({"error": "Project name and file name required"}), 400
-        
+            return jsonify({"error": "Project and file name required"}), 400
+
         project_path = get_project_path(project_name)
         file_path = project_path / name
+
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(content)
-        
-        print(f"✨ Created: {project_name}/{name}")
-        
+        safe_write_file(file_path, content)
+
         files = get_all_files(project_name)
         new_file = next((f for f in files if f["name"] == name), None)
-        
-        socketio.emit("file_created", new_file)
-        
-        return jsonify(new_file), 201
-        
-    except Exception as e:
-        print(f"❌ Create file error: {e}")
-        return jsonify({"error": str(e)}), 500
 
+        socketio.emit("file_created", new_file)
+
+        return jsonify(new_file), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/save_file", methods=["POST"])
 def save_file():
@@ -592,24 +500,19 @@ def save_file():
         project_name = data.get("project")
         name = data.get("name")
         content = data.get("content", "")
-        
+
         if not project_name or not name:
-            return jsonify({"error": "Project name and file name required"}), 400
-        
+            return jsonify({"error": "Project and file name required"}), 400
+
         project_path = get_project_path(project_name)
         file_path = project_path / name
+
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(content)
-        
-        print(f"💾 Saved: {project_name}/{name}")
-        
-        return jsonify({"success": True, "message": "File saved"})
-        
+        safe_write_file(file_path, content)
+
+        return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 @app.route("/delete_file", methods=["POST"])
 def delete_file():
@@ -618,30 +521,26 @@ def delete_file():
         data = request.get_json()
         project_name = data.get("project")
         name = data.get("name")
-        
+
         if not project_name or not name:
-            return jsonify({"error": "Project name and file name required"}), 400
-        
+            return jsonify({"error": "Project and file name required"}), 400
+
         project_path = get_project_path(project_name)
         file_path = project_path / name
-        
+
         if not file_path.exists():
             return jsonify({"error": "File not found"}), 404
-        
+
         if file_path.is_file():
             file_path.unlink()
         else:
             shutil.rmtree(file_path)
-        
-        print(f"🗑️ Deleted: {project_name}/{name}")
-        
+
         socketio.emit("file_deleted", {"project": project_name, "name": name})
-        
-        return jsonify({"success": True, "message": "File deleted"})
-        
+
+        return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 @app.route("/rename_file", methods=["POST"])
 def rename_file():
@@ -651,64 +550,55 @@ def rename_file():
         project_name = data.get("project")
         old_name = data.get("oldName")
         new_name = data.get("newName")
-        
+
         if not project_name or not old_name or not new_name:
-            return jsonify({"error": "Project name, old name and new name required"}), 400
-        
+            return jsonify({"error": "Missing parameters"}), 400
+
         project_path = get_project_path(project_name)
         old_path = project_path / old_name
         new_path = project_path / new_name
-        
+
         if not old_path.exists():
             return jsonify({"error": "File not found"}), 404
-        
+
         new_path.parent.mkdir(parents=True, exist_ok=True)
         old_path.rename(new_path)
-        
-        print(f"✏️ Renamed: {old_name} → {new_name}")
-        
+
         socketio.emit("file_renamed", {
             "project": project_name,
             "oldName": old_name,
             "newName": new_name
         })
-        
-        return jsonify({"success": True, "message": "File renamed"})
-        
+
+        return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 @app.route("/download_project", methods=["GET"])
 def download_project():
     """Download project as ZIP"""
     try:
         project_name = request.args.get("project")
-        
+
         if not project_name:
             return jsonify({"error": "Project name required"}), 400
-        
+
         project_path = get_project_path(project_name)
-        
         if not project_path.exists():
             return jsonify({"error": "Project not found"}), 404
-        
+
         zip_path = PROJECTS_ROOT / f"{project_name}.zip"
-        
+
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             for file in project_path.rglob("*"):
-                if file.is_file():
+                if file.is_file() and "node_modules" not in str(file):
                     arcname = file.relative_to(project_path)
                     zipf.write(file, arcname)
-        
-        print(f"📦 Downloaded: {project_name}")
+
         return send_file(zip_path, as_attachment=True, download_name=f"{project_name}.zip")
-        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-# ========================= SOCKET.IO =========================
 @socketio.on("update_file")
 def handle_update(data):
     """Handle real-time file updates"""
@@ -716,31 +606,26 @@ def handle_update(data):
         project_name = data.get("project")
         name = data.get("name")
         content = data.get("content")
-        
-        print(f"📩 Socket update: {project_name}/{name}")
-        
+
         project_path = get_project_path(project_name)
         file_path = project_path / name
+
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(content)
-        
+        safe_write_file(file_path, content)
+
         emit("file_updated", {
             "project": project_name,
             "name": name,
             "content": content
         }, broadcast=True, include_self=False)
-        
+
     except Exception as e:
         print(f"❌ Socket error: {e}")
 
-
-# ========================= FILE WATCHER =========================
 class FileChangeHandler(FileSystemEventHandler):
     def __init__(self):
         self.last_modified = {}
-        
+
     def on_any_event(self, event):
         if event.is_directory:
             return
@@ -749,19 +634,20 @@ class FileChangeHandler(FileSystemEventHandler):
         if event.src_path in self.last_modified:
             if now - self.last_modified[event.src_path] < 0.5:
                 return
+
         self.last_modified[event.src_path] = now
 
         if event.event_type in ("modified", "created"):
             try:
                 time.sleep(0.1)
-                
+
                 rel_path = os.path.relpath(event.src_path, PROJECTS_ROOT)
                 project_name = rel_path.split(os.sep)[0]
                 file_rel_path = os.sep.join(rel_path.split(os.sep)[1:])
-                
+
                 with open(event.src_path, "r", encoding="utf-8") as f:
                     content = f.read()
-                
+
                 if event.event_type == "created":
                     files = get_all_files(project_name)
                     new_file = next((f for f in files if f["name"] == file_rel_path), None)
@@ -773,10 +659,8 @@ class FileChangeHandler(FileSystemEventHandler):
                         "name": file_rel_path,
                         "content": content
                     })
-                
             except Exception as e:
                 print(f"❌ Watcher error: {e}")
-
 
 def start_watcher():
     observer = Observer()
@@ -792,34 +676,33 @@ def start_watcher():
         observer.stop()
     observer.join()
 
-
-# ========================= CLEANUP =========================
 def cleanup():
     """Stop all running processes"""
     print("\n🧹 Cleaning up...")
     for project_name in list(RUNNING_PROCESSES.keys()):
         stop_project(project_name)
 
-
 import atexit
 atexit.register(cleanup)
 
-
-# ========================= RUN SERVER =========================
 if __name__ == "__main__":
     print(f"\n{'='*60}")
-    print(f"🚀 DevDost AI Backend Server (Complete)")
+    print(f"🚀 DevDost AI - SocketIO Real-Time Backend")
     print(f"{'='*60}")
     print(f"📂 Projects: {PROJECTS_ROOT}")
     print(f"🌐 Server: http://localhost:5000")
-    print(f"💬 Chat: POST /chat")
-    print(f"▶️ Run: POST /run_project")
+    print(f"💬 Chat: SocketIO 'chat_message' event")
+    print(f"🤖 Agent: {'✅ Loaded' if agent else '❌ Not available'}")
+    print(f"✅ Real-time: SocketIO streaming enabled")
+    print(f"✅ Recursion limit: 100")
+    print(f"✅ File size limit: {MAX_FILE_SIZE / 1024}KB")
     print(f"{'='*60}\n")
-    
+
     PROJECTS_ROOT.mkdir(parents=True, exist_ok=True)
-    
+
+    import threading
     threading.Thread(target=start_watcher, daemon=True).start()
-    
+
     socketio.run(
         app,
         host="0.0.0.0",

@@ -1,29 +1,157 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Sparkles, Code2, Eye, User, Plus, MessageSquare, Play, Save, FileCode, MoreVertical, Edit2, Copy, Trash2, FileText, FolderPlus, FilePlus, FileTerminal, Download, Send, Loader2, FileIcon, Folder, ChevronDown, Terminal, X, RefreshCw } from 'lucide-react';
+import { Sparkles, Code2, Eye, User, MessageSquare, Play, Save, FileCode, MoreVertical, Edit2, Copy, Trash2, FileText, FilePlus, Download, Send, Loader2, FileIcon, Folder, FolderOpen, ChevronDown, ChevronRight, Terminal, X, RefreshCw, Wifi, WifiOff, Laptop, Globe, Smartphone, Database, Server, Layout, Package, Zap, Coffee } from 'lucide-react';
+import { io } from "socket.io-client";
 
-const socket = (() => {
-  try {
-    const io = require('socket.io-client');
-    return io("http://localhost:5000");
-  } catch (e) {
-    return null;
+// Socket with auto-reconnect
+export const socket = io("http://localhost:5000", {
+  transports: ["websocket"],
+  reconnection: true,
+  reconnectionDelay: 1000,
+  reconnectionAttempts: 5
+});
+
+
+
+// Project icons mapping
+const PROJECT_ICONS = {
+  'react': Layout,
+  'next': Zap,
+  'nextjs': Zap,
+  'node': Server,
+  'nodejs': Server,
+  'express': Coffee,
+  'html': Globe,
+  'web': Globe,
+  'mobile': Smartphone,
+  'app': Laptop,
+  'api': Database,
+  'default': Package
+};
+
+const getProjectIcon = (projectName, projectType) => {
+  const name = (projectName || '').toLowerCase();
+  const type = (projectType || '').toLowerCase();
+
+  for (const [key, Icon] of Object.entries(PROJECT_ICONS)) {
+    if (name.includes(key) || type.includes(key)) {
+      return Icon;
+    }
   }
-})();
+  return PROJECT_ICONS.default;
+};
+
+// ✅ NEW: Build folder tree structure from flat file list
+const buildFileTree = (files) => {
+  const tree = {};
+
+  files.forEach(file => {
+    const parts = file.name.split('/');
+    let current = tree;
+
+    parts.forEach((part, idx) => {
+      if (idx === parts.length - 1) {
+        // It's a file
+        if (!current.__files) current.__files = [];
+        current.__files.push({ ...file, displayName: part });
+      } else {
+        // It's a folder
+        if (!current[part]) {
+          current[part] = {};
+        }
+        current = current[part];
+      }
+    });
+  });
+
+  return tree;
+};
+
+// ✅ NEW: Folder Tree Component
+const FolderTree = ({ tree, level = 0, onFileSelect, selectedFileId, onContextMenu }) => {
+  const [collapsed, setCollapsed] = useState({});
+
+  const toggleFolder = (path) => {
+    setCollapsed(prev => ({ ...prev, [path]: !prev[path] }));
+  };
+
+  const folders = Object.keys(tree).filter(k => k !== '__files');
+  const files = tree.__files || [];
+
+  return (
+    <div className="select-none">
+      {/* Folders first */}
+      {folders.map(folderName => {
+        const folderPath = `${level}_${folderName}`;
+        const isCollapsed = collapsed[folderPath];
+
+        return (
+          <div key={folderPath}>
+            <button
+              onClick={() => toggleFolder(folderPath)}
+              className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 rounded-lg transition-colors text-left"
+              style={{ paddingLeft: `${level * 12 + 12}px` }}
+            >
+              {isCollapsed ? (
+                <ChevronRight className="w-3 h-3 text-gray-500 flex-shrink-0" />
+              ) : (
+                <ChevronDown className="w-3 h-3 text-gray-500 flex-shrink-0" />
+              )}
+              {isCollapsed ? (
+                <Folder className="w-4 h-4 text-yellow-500 flex-shrink-0" />
+              ) : (
+                <FolderOpen className="w-4 h-4 text-yellow-500 flex-shrink-0" />
+              )}
+              <span className="text-sm font-medium text-gray-700">{folderName}</span>
+            </button>
+
+            {!isCollapsed && (
+              <FolderTree
+                tree={tree[folderName]}
+                level={level + 1}
+                onFileSelect={onFileSelect}
+                selectedFileId={selectedFileId}
+                onContextMenu={onContextMenu}
+              />
+            )}
+          </div>
+        );
+      })}
+
+      {/* Files */}
+      {files.map(file => (
+        <button
+          key={file.id}
+          onClick={() => onFileSelect(file.id)}
+          onContextMenu={(e) => onContextMenu(e, file)}
+          className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all text-left ${selectedFileId === file.id
+            ? 'bg-purple-100 text-purple-900 shadow-sm'
+            : 'hover:bg-gray-100 text-gray-700'
+            }`}
+          style={{ paddingLeft: `${level * 12 + 28}px` }}
+        >
+          <FileText className="w-4 h-4 flex-shrink-0" />
+          <span className="text-sm font-medium truncate">{file.displayName}</span>
+        </button>
+      ))}
+    </div>
+  );
+};
 
 export default function DevDostAI() {
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [chatMessages, setChatMessages] = useState([
-    { role: 'ai', content: "Hi! I'm DevDost AI. I can help you create projects, chat with you, and even run your code! 💜" }
+    { role: 'ai', content: "👋 Hi! I'm DevDost AI - Your coding assistant!\n\nI can help you with:\n✅ Creating projects\n✅ Running/stopping projects\n✅ Creating/editing/deleting files\n✅ Renaming/copying files\n✅ General coding questions\n\nJust tell me what you need! 💜" }
   ]);
-  const [aiStatus, setAiStatus] = useState({ active: false, message: "" });
-  const [sessionId] = useState(() => 'session_' + Math.random().toString(36).substr(2, 9));
   const chatEndRef = useRef(null);
   const iframeRef = useRef(null);
+  const inputRef = useRef(null);
 
-  const [activeTab, setActiveTab] = useState('code');
+  const [activeTab, setActiveTab] = useState('projects');
   const [files, setFiles] = useState([]);
+  const [fileTree, setFileTree] = useState({});
   const [projects, setProjects] = useState([]);
+  const [projectsDetails, setProjectsDetails] = useState({});
   const [currentProject, setCurrentProject] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
@@ -32,12 +160,77 @@ export default function DevDostAI() {
   const [showNewFileModal, setShowNewFileModal] = useState(null);
   const [newFileNameInput, setNewFileNameInput] = useState('');
   const [previewHTML, setPreviewHTML] = useState('');
-  const [showProjectsDropdown, setShowProjectsDropdown] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [runningProjects, setRunningProjects] = useState({});
   const [terminalOutput, setTerminalOutput] = useState([]);
   const [showTerminal, setShowTerminal] = useState(false);
+  const [currentNode, setCurrentNode] = useState(null);
+  const [completedNodes, setCompletedNodes] = useState([]);
+  const [projectReady, setProjectReady] = useState(false);
+  const [sessionId] = useState(() => 'session_' + Math.random().toString(36).substr(2, 9));
 
-  // ==================== FETCH PROJECTS ====================
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [agentProgress, setAgentProgress] = useState({ visible: false, message: "", node: "" });
+
+  // Socket connection management
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on("connect", () => {
+      console.log("✅ Socket connected");
+      setSocketConnected(true);
+    });
+
+    socket.on("disconnect", () => {
+      console.log("❌ Socket disconnected");
+      setSocketConnected(false);
+    });
+
+    socket.on("connect_error", (error) => {
+      console.error("Socket connection error:", error);
+      setSocketConnected(false);
+    });
+
+    return () => {
+      socket.off("connect");
+      socket.off("disconnect");
+      socket.off("connect_error");
+    };
+  }, []);
+
+  // Agent node tracking
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on("agent_node", (data) => {
+      console.log("🔄 NODE EVENT:", data);
+
+      if (data.event === "start") {
+        setCurrentNode(data.node);
+        setAgentProgress({
+          visible: true,
+          message: `Executing: ${data.node}`,
+          node: data.node
+        });
+        setCompletedNodes(prev => prev.filter(n => n !== data.node));
+      }
+
+      if (data.event === "finish") {
+        setCompletedNodes(prev => {
+          if (!prev.includes(data.node)) {
+            return [...prev, data.node];
+          }
+          return prev;
+        });
+        setTimeout(() => setCurrentNode(null), 500);
+      }
+    });
+
+    return () => {
+      socket.off("agent_node");
+    };
+  }, []);
+
   useEffect(() => {
     fetchProjects();
   }, []);
@@ -47,28 +240,40 @@ export default function DevDostAI() {
       const res = await fetch("http://localhost:5000/projects");
       const data = await res.json();
       setProjects(data.projects || []);
+
+      const details = {};
+      for (const proj of (data.projects || [])) {
+        try {
+          const detailRes = await fetch(`http://localhost:5000/projects/${proj}`);
+          const detailData = await detailRes.json();
+          details[proj] = detailData;
+        } catch (err) {
+          console.error(`Error fetching details for ${proj}:`, err);
+        }
+      }
+      setProjectsDetails(details);
     } catch (err) {
       console.error("Error fetching projects:", err);
     }
   };
 
-  // ==================== FETCH FILES ====================
   const fetchFiles = async (projectName = null) => {
     try {
       if (!projectName) {
         setFiles([]);
+        setFileTree({});
         return;
       }
 
-      const url = `http://localhost:5000/get_files?project=${projectName}`;
-
-      const res = await fetch(url);
+      const res = await fetch(`http://localhost:5000/get_files?project=${projectName}`);
       const data = await res.json();
-
-      // Filter files for current project only
       const projectFiles = data.filter(f => f.project === projectName);
 
       setFiles(projectFiles);
+
+      // ✅ Build folder tree
+      const tree = buildFileTree(projectFiles);
+      setFileTree(tree);
 
       if (projectFiles.length > 0 && !selectedFile) {
         setSelectedFile(projectFiles[0].id);
@@ -78,6 +283,7 @@ export default function DevDostAI() {
     } catch (err) {
       console.error("Error fetching files:", err);
       setFiles([]);
+      setFileTree({});
     }
   };
 
@@ -86,87 +292,200 @@ export default function DevDostAI() {
       fetchFiles(currentProject);
     } else {
       setFiles([]);
+      setFileTree({});
       setSelectedFile(null);
     }
   }, [currentProject]);
 
-  // ==================== SOCKET CONNECTION ====================
+  // Socket event listeners
   useEffect(() => {
-    if (socket) {
-      socket.on("file_updated", (data) => {
-        console.log("🧠 File updated:", data);
-        if (data.project === currentProject) {
-          setFiles((prev) => {
-            const updated = prev.map((f) =>
-              f.name === data.name ? { ...f, content: data.content } : f
-            );
-            updatePreview(updated);
-            return updated;
-          });
-          setAiStatus({ active: true, message: `📝 Updated: ${data.name}` });
-          setTimeout(() => setAiStatus({ active: false, message: "" }), 2000);
-        }
-      });
+    if (!socket) return;
 
-      socket.on("file_created", (data) => {
-        console.log("✨ File created:", data);
-        if (data.project === currentProject) {
-          setFiles((prev) => {
-            const updated = [...prev, data];
-            updatePreview(updated);
-            return updated;
-          });
-          setAiStatus({ active: true, message: `✨ Created: ${data.name}` });
-          setTimeout(() => setAiStatus({ active: false, message: "" }), 2000);
-        }
-      });
+    socket.on("chat_response", (data) => {
+      console.log("📩 FINAL RESPONSE:", data);
+      setLoading(false); // <--- IMPORTANT
+      setAgentProgress({ visible: false, message: "", node: "" });
+      setCurrentNode(null);
 
-      socket.on("ai_step", (data) => {
-        console.log("🤖 AI Step:", data);
-        setAiStatus({ active: true, message: data.message });
-      });
+      setChatMessages(prev => [...prev, { role: 'ai', content: data.message }]);
 
-      socket.on("file_deleted", (data) => {
-        if (data.project === currentProject) {
-          setFiles((prev) => prev.filter(f => f.name !== data.name));
-        }
-      });
+      if (data.current_project) setCurrentProject(data.current_project);
+    });
 
-      socket.on("file_renamed", (data) => {
-        if (data.project === currentProject) {
-          setFiles((prev) =>
-            prev.map((f) =>
-              f.name === data.oldName ? { ...f, name: data.newName } : f
-            )
+    socket.on("chat_error", (data) => {
+      console.log("❌ CHAT ERROR:", data);
+      setChatMessages(prev => [...prev, { role: 'ai', content: "Error: " + data.error }]);
+    });
+
+    socket.on("file_updated", (data) => {
+      if (data.project === currentProject) {
+        setFiles((prev) => {
+          const updated = prev.map((f) =>
+            f.name === data.name ? { ...f, content: data.content } : f
           );
+          updatePreview(updated);
+          const tree = buildFileTree(updated);
+          setFileTree(tree);
+          return updated;
+        });
+      }
+    });
+
+    socket.on("file_created", (data) => {
+      if (data.project === currentProject) {
+        setFiles((prev) => {
+          const updated = [...prev, data];
+          updatePreview(updated);
+          const tree = buildFileTree(updated);
+          setFileTree(tree);
+          return updated;
+        });
+      }
+    });
+
+    socket.on("ai_progress", (data) => {
+      console.log('📡 RECEIVED ai_progress:', data.message);
+
+      // ✅ Update agent progress
+      setAgentProgress({
+        visible: true,
+        message: data.message,
+        node: currentNode || "processing"
+      });
+
+      // ✅ Add to chat with proper formatting
+      setChatMessages(prev => {
+        // Avoid duplicate messages
+        const lastMsg = prev[prev.length - 1];
+        if (lastMsg?.content === data.message && lastMsg?.type === 'progress') {
+          return prev; // Skip duplicate
         }
-      });
 
-      socket.on("project_deleted", () => {
+        return [...prev, {
+          role: 'ai',
+          content: data.message,
+          type: 'progress',
+          timestamp: Date.now()
+        }];
+      });
+    });
+
+    socket.on("agent_complete", (data) => {
+      console.log("✅ Agent complete:", data);
+
+      setProjectReady(true);
+      setLoading(false);
+      setAgentProgress({ visible: false, message: "", node: "" });
+      setCurrentNode(null);
+
+      if (data.force_refresh) {
         fetchProjects();
-      });
+        const proj = data.current_project || currentProject;
+        if (proj) {
+          setTimeout(() => fetchFiles(proj), 500);
+        }
+      }
 
-      socket.on("terminal_output", (data) => {
-        setTerminalOutput(prev => [...prev, data.output]);
-      });
+      if (data.success) {
+        if (data.message) {
+          setChatMessages(prev => [...prev, {
+            role: 'ai',
+            content: data.message
+          }]);
+        }
 
-      return () => {
-        socket.off("file_updated");
-        socket.off("file_created");
-        socket.off("file_deleted");
-        socket.off("file_renamed");
-        socket.off("ai_step");
-        socket.off("project_deleted");
-        socket.off("terminal_output");
-      };
-    }
-  }, [currentProject]);
+        if (data.current_project) {
+          setCurrentProject(data.current_project);
+          fetchProjects();
+          setTimeout(() => fetchFiles(data.current_project), 500);
+        }
+      }
+    });
+
+    socket.on("agent_error", (data) => {
+      console.error("❌ Agent error:", data);
+      setLoading(false);
+      setAgentProgress({ visible: false, message: "", node: "" });
+      setCurrentNode(null);
+
+      setChatMessages(prev => [...prev, {
+        role: 'ai',
+        content: `❌ Error: ${data.error || 'Something went wrong'}`
+      }]);
+    });
+
+    socket.on("file_deleted", (data) => {
+      if (data.project === currentProject) {
+        setFiles((prev) => {
+          const updated = prev.filter(f => f.name !== data.name);
+          const tree = buildFileTree(updated);
+          setFileTree(tree);
+          return updated;
+        });
+      }
+    });
+
+    socket.on("file_renamed", (data) => {
+      if (data.project === currentProject) {
+        setFiles((prev) => {
+          const updated = prev.map((f) =>
+            f.name === data.oldName ? { ...f, name: data.newName } : f
+          );
+          const tree = buildFileTree(updated);
+          setFileTree(tree);
+          return updated;
+        });
+      }
+    });
+
+    socket.on("project_deleted", () => {
+      fetchProjects();
+    });
+
+    socket.on("project_status", (data) => {
+      setTerminalOutput(prev => [...prev, data.message]);
+      if (data.status === "stopped") {
+        setRunningProjects(prev => {
+          const newState = { ...prev };
+          delete newState[data.project];
+          return newState;
+        });
+        if (data.project === currentProject) {
+          setIsRunning(false);
+          setPreviewHTML('');
+          if (iframeRef.current) {
+            iframeRef.current.src = 'about:blank';
+          }
+        }
+      } else if (data.status === "running") {
+        setRunningProjects(prev => ({ ...prev, [data.project]: true }));
+      }
+    });
+
+    socket.on("terminal_output", (data) => {
+      setTerminalOutput(prev => [...prev, data.output]);
+    });
+
+    return () => {
+      socket.off("chat_response");
+      socket.off("chat_error");
+      socket.off("file_updated");
+      socket.off("file_created");
+      socket.off("file_deleted");
+      socket.off("file_renamed");
+      socket.off("ai_progress");
+      socket.off("agent_complete");
+      socket.off("agent_error");
+      socket.off("project_deleted");
+      socket.off("project_status");
+      socket.off("terminal_output");
+    };
+  }, [currentProject, currentNode]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
 
-  // ==================== PREVIEW UPDATE ====================
   const updatePreview = (filesList) => {
     const htmlFile = filesList.find(f => f.name.endsWith('.html') || f.name === 'index.html');
     const cssFile = filesList.find(f => f.name.endsWith('.css'));
@@ -191,85 +510,103 @@ export default function DevDostAI() {
     updatePreview(files);
   }, [files]);
 
-  // ==================== AI CHAT ====================
+
   async function handleGenerate() {
     if (!prompt.trim()) return;
 
-    const userMessage = { role: 'user', content: prompt };
+    const userMessage = {
+      role: 'user',
+      content: prompt
+    };
+
     setChatMessages(prev => [...prev, userMessage]);
-    setPrompt("");
+    setPrompt('');
     setLoading(true);
-    setAiStatus({ active: true, message: "🤖 AI is processing..." });
+    setProjectReady(false);
+    setCompletedNodes([]);
+    setAgentProgress({ visible: true, message: 'Initializing...', node: 'initializing' });
 
     try {
-      const res = await fetch("http://localhost:5000/chat", {
+      // ✅ CHECK IF SOCKET IS CONNECTED
+      if (!socket || !socketConnected) {
+        setChatMessages(prev => [...prev, {
+          role: 'ai',
+          content: '❌ Socket not connected! Make sure backend is running at http://localhost:5000'
+        }]);
+        setAgentProgress({ visible: false, message: '', node: null });
+        setLoading(false);
+        return;
+      }
+
+      console.log('📤 Sending message via SocketIO...');
+
+      // ✅ USE SOCKET.EMIT instead of fetch POST
+      socket.emit('chat_message', {
+        message: prompt || userMessage.content,
+        session_id: sessionId,
+        chat_history: chatMessages
+      });
+
+      // No need to wait for response - socket listeners handle it
+      console.log('✅ Message sent, waiting for ai_progress events...');
+
+    } catch (err) {
+      console.error('❌ Error:', err);
+      setChatMessages(prev => [...prev, {
+        role: 'ai',
+        content: `Server error: ${err.message}. Make sure backend is running.`
+      }]);
+      setAgentProgress({ visible: false, message: '', node: null });
+      setLoading(false);
+    }
+  }
+
+
+  const handleProjectClick = (projectName) => {
+    setCurrentProject(projectName);
+    fetchFiles(projectName);
+    setActiveTab('code');
+  };
+
+  const handleRunProject = async (projectName, e) => {
+    if (e) e.stopPropagation();
+
+    setCurrentProject(projectName);
+    setShowTerminal(true);
+    setTerminalOutput([`🚀 Running project: ${projectName}...`]);
+
+    try {
+      const res = await fetch("http://localhost:5000/run_project", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: userMessage.content,
-          session_id: sessionId,
-          chat_history: chatMessages
-        }),
+        body: JSON.stringify({ project: projectName }),
       });
 
       const data = await res.json();
 
       if (data.success) {
-        const aiMessage = data.message || "Done!";
-        setChatMessages(prev => [...prev, {
-          role: 'ai',
-          content: aiMessage
-        }]);
+        setTerminalOutput(prev => [...prev, `✅ ${data.message}`]);
+        setRunningProjects(prev => ({ ...prev, [projectName]: true }));
 
-        if (data.current_project) {
-          setCurrentProject(data.current_project);
-          fetchProjects();
-          fetchFiles(data.current_project);
+        if (projectName === currentProject) {
+          setIsRunning(true);
         }
 
-        setAiStatus({ active: false, message: "" });
+        setTimeout(() => {
+          setActiveTab('preview');
+          fetchFiles(projectName);
+        }, 500);
       } else {
-        setChatMessages(prev => [...prev, {
-          role: 'ai',
-          content: `❌ Error: ${data.error}`
-        }]);
-        setAiStatus({ active: false, message: "" });
+        setTerminalOutput(prev => [...prev, `❌ Error: ${data.error}`]);
       }
     } catch (err) {
-      setChatMessages(prev => [...prev, {
-        role: 'ai',
-        content: "❌ Server not reachable!"
-      }]);
-      setAiStatus({ active: false, message: "" });
-    } finally {
-      setLoading(false);
+      setTerminalOutput(prev => [...prev, `❌ Failed to run: ${err.message}`]);
     }
-  }
-
-  // ==================== PROJECT OPERATIONS ====================
-  const handleProjectSwitch = async (projectName) => {
-    try {
-      const res = await fetch(`http://localhost:5000/projects/${projectName}/switch`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId }),
-      });
-
-      if (res.ok) {
-        setCurrentProject(projectName);
-        fetchFiles(projectName);
-        setChatMessages(prev => [...prev, {
-          role: 'ai',
-          content: `✅ Switched to project: ${projectName}`
-        }]);
-      }
-    } catch (err) {
-      console.error("Error switching project:", err);
-    }
-    setShowProjectsDropdown(false);
   };
 
-  const handleDeleteProject = async (projectName) => {
+  const handleDeleteProjectCard = async (projectName, e) => {
+    if (e) e.stopPropagation();
+
     if (!window.confirm(`Delete project "${projectName}"?`)) return;
 
     try {
@@ -282,6 +619,7 @@ export default function DevDostAI() {
         if (currentProject === projectName) {
           setCurrentProject(null);
           setFiles([]);
+          setFileTree({});
         }
         setChatMessages(prev => [...prev, {
           role: 'ai',
@@ -293,17 +631,13 @@ export default function DevDostAI() {
     }
   };
 
-
-  // ==================== RUN/PROJECT TOGGLE ====================
   const handleRunStopProject = async () => {
     if (!currentProject) {
       window.alert("No project selected!");
       return;
     }
 
-    // Agar project already running hai toh stop karo
     if (isRunning) {
-      setIsRunning(true); // Loading state ke liye
       setShowTerminal(true);
       setTerminalOutput([`🛑 Stopping project: ${currentProject}...`]);
 
@@ -318,60 +652,22 @@ export default function DevDostAI() {
 
         if (data.success) {
           setTerminalOutput(prev => [...prev, `✅ ${data.message}`]);
-
-          // Preview clear karo
           setPreviewHTML('');
-
-          // Iframe clear karo
           if (iframeRef.current) {
             iframeRef.current.src = 'about:blank';
           }
-
-          // Running status false karo
           setIsRunning(false);
         } else {
           setTerminalOutput(prev => [...prev, `❌ Error: ${data.error}`]);
-          setIsRunning(false);
         }
       } catch (err) {
-        setTerminalOutput(prev => [...prev, `❌ Failed to stop project: ${err.message}`]);
-        setIsRunning(false);
+        setTerminalOutput(prev => [...prev, `❌ Failed to stop: ${err.message}`]);
       }
-    }
-    // Agar project running nahi hai toh start karo
-    else {
-      setIsRunning(true);
-      setShowTerminal(true);
-      setTerminalOutput([`🚀 Running project: ${currentProject}...`]);
-
-      try {
-        const res = await fetch("http://localhost:5000/run_project", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ project: currentProject }),
-        });
-
-        const data = await res.json();
-
-        if (data.success) {
-          setTerminalOutput(prev => [...prev, `✅ ${data.message}`, ...data.output.split('\n')]);
-
-          if (data.url) {
-            setTerminalOutput(prev => [...prev, `🌐 Server running at: ${data.url}`]);
-          }
-        } else {
-          setTerminalOutput(prev => [...prev, `❌ Error: ${data.error}`]);
-          setIsRunning(false);
-        }
-      } catch (err) {
-        setTerminalOutput(prev => [...prev, `❌ Failed to run project: ${err.message}`]);
-        setIsRunning(false);
-      }
+    } else {
+      handleRunProject(currentProject);
     }
   };
 
-
-  // ==================== FILE OPERATIONS ====================
   const handleContextMenu = (e, file) => {
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY, file });
@@ -574,6 +870,17 @@ export default function DevDostAI() {
 
         <nav className="flex flex-col gap-4 flex-1">
           <button
+            onClick={() => setActiveTab('projects')}
+            className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${activeTab === 'projects'
+              ? 'bg-purple-100 text-purple-600 shadow-md'
+              : 'text-gray-400 hover:text-purple-600 hover:bg-purple-50'
+              }`}
+            title="Projects"
+          >
+            <Folder className="w-5 h-5" />
+          </button>
+
+          <button
             onClick={() => setActiveTab('code')}
             className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${activeTab === 'code'
               ? 'bg-purple-100 text-purple-600 shadow-md'
@@ -583,6 +890,7 @@ export default function DevDostAI() {
           >
             <Code2 className="w-5 h-5" />
           </button>
+
           <button
             onClick={() => setActiveTab('preview')}
             className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${activeTab === 'preview'
@@ -605,49 +913,44 @@ export default function DevDostAI() {
         {/* Header */}
         <header className="h-16 bg-white/80 backdrop-blur-xl border-b border-gray-200/50 flex items-center justify-between px-8">
           <div className="flex items-center gap-4">
-            <div className="relative">
-              <button
-                onClick={() => setShowProjectsDropdown(!showProjectsDropdown)}
-                className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-gray-200 hover:border-purple-300 transition-colors"
-              >
-                <Folder className="w-4 h-4 text-purple-600" />
-                <span className="font-medium text-gray-800">
-                  {currentProject || 'No Project'}
-                </span>
-                <ChevronDown className="w-4 h-4 text-gray-500" />
-              </button>
-
-              {showProjectsDropdown && (
-                <div className="absolute top-full mt-2 left-0 w-64 bg-white rounded-xl shadow-2xl border border-gray-200 py-2 z-50 max-h-80 overflow-auto">
-                  <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase">Projects</div>
-                  {projects.length === 0 ? (
-                    <div className="px-4 py-3 text-sm text-gray-400">No projects yet</div>
-                  ) : (
-                    projects.map(proj => (
-                      <div key={proj} className="flex items-center justify-between px-4 py-2 hover:bg-purple-50 group">
-                        <button
-                          onClick={() => handleProjectSwitch(proj)}
-                          className="flex-1 text-left text-sm font-medium text-gray-700"
-                        >
-                          {proj}
-                        </button>
-                        <button
-                          onClick={() => handleDeleteProject(proj)}
-                          className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 rounded transition-all"
-                        >
-                          <Trash2 className="w-3 h-3 text-red-600" />
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${socketConnected ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+              {socketConnected ? (
+                <>
+                  <Wifi className="w-3 h-3 text-green-600" />
+                  <span className="text-xs font-medium text-green-700">Connected</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="w-3 h-3 text-red-600" />
+                  <span className="text-xs font-medium text-red-700">Disconnected</span>
+                </>
               )}
             </div>
 
-            {aiStatus.active && (
-              <div className="flex items-center gap-2 px-4 py-2 bg-purple-50 rounded-xl border border-purple-200 animate-pulse">
+            {currentProject && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-gray-200">
+                <Folder className="w-4 h-4 text-purple-600" />
+                <span className="font-medium text-gray-800">{currentProject}</span>
+              </div>
+            )}
+
+            {agentProgress.visible && (
+              <div className="flex items-center gap-3 px-4 py-2 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200">
                 <Loader2 className="w-4 h-4 text-purple-600 animate-spin" />
-                <span className="text-sm font-medium text-purple-700">{aiStatus.message}</span>
+                <div className="flex flex-col">
+                  <span className="text-xs font-semibold text-purple-900">{agentProgress.node}</span>
+                  <span className="text-xs text-purple-700">{agentProgress.message}</span>
+                </div>
+              </div>
+            )}
+
+            {completedNodes.length > 0 && (
+              <div className="flex items-center gap-2">
+                {completedNodes.slice(-3).map((node, idx) => (
+                  <div key={idx} className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-lg">
+                    ✓ {node}
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -664,27 +967,20 @@ export default function DevDostAI() {
               {isRunning ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Stop Project
+                  Stop
                 </>
               ) : (
                 <>
                   <Play className="w-4 h-4" />
-                  Run Project
+                  Run
                 </>
               )}
             </button>
             <button
               onClick={() => setShowTerminal(!showTerminal)}
-              className={`px-5 py-2.5 rounded-xl hover:shadow-lg hover:scale-105 transition-all font-medium flex items-center gap-2 ${showTerminal
-                  ? 'bg-gray-800 text-white'
-                  : 'bg-gray-900 text-white'
-                }`}
+              className="px-5 py-2.5 bg-gray-900 text-white rounded-xl hover:shadow-lg hover:scale-105 transition-all font-medium flex items-center gap-2"
             >
-              {isRunning ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Terminal className="w-4 h-4" />
-              )}
+              <Terminal className="w-4 h-4" />
               Terminal
             </button>
             <button
@@ -693,268 +989,314 @@ export default function DevDostAI() {
               className="px-5 py-2.5 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl hover:shadow-lg hover:scale-105 transition-all font-medium flex items-center gap-2 disabled:opacity-50"
             >
               <Download className="w-4 h-4" />
-              Download
-            </button>
-            <button
-              onClick={createNewFile}
-              disabled={!currentProject}
-              className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:shadow-lg hover:scale-105 transition-all font-medium flex items-center gap-2 disabled:opacity-50"
-            >
-              <Plus className="w-4 h-4" />
-              New File
             </button>
           </div>
         </header>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-hidden p-8">
-          <div className="grid grid-cols-4 gap-6 h-full">
-            {/* File Explorer */}
-            {activeTab === 'code' && (
-              <div className="bg-white rounded-3xl shadow-xl border border-gray-200/50 overflow-hidden flex flex-col">
-                <div className="px-4 py-3 border-b border-gray-200/50 bg-gradient-to-r from-purple-50/50 to-pink-50/50 flex items-center justify-between">
-                  <span className="font-semibold text-gray-800 text-sm">Files</span>
+        <div className="flex-1 flex overflow-hidden">
+          {/* ✅ Projects Tab */}
+          {activeTab === 'projects' && (
+            <div className="flex-1 overflow-auto p-8">
+              <div className="max-w-7xl mx-auto">
+                <div className="mb-8">
+                  <h1 className="text-3xl font-bold text-gray-900 mb-2">Your Projects</h1>
+                  <p className="text-gray-600">All projects created by AI</p>
+                </div>
+
+                {projects.length === 0 ? (
+                  <div className="text-center py-16">
+                    <Folder className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+                    <h3 className="text-xl font-semibold text-gray-800 mb-2">No projects yet</h3>
+                    <p className="text-gray-500 mb-6">Ask AI to create your first project!</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {projects.map((project) => {
+                      const details = projectsDetails[project] || {};
+                      const ProjectIcon = getProjectIcon(project, details.type);
+                      const isProjectRunning = runningProjects[project];
+
+                      return (
+                        <div
+                          key={project}
+                          onClick={() => handleProjectClick(project)}
+                          className="group relative bg-white rounded-2xl border-2 border-gray-200 hover:border-purple-400 hover:shadow-xl transition-all duration-300 cursor-pointer overflow-hidden"
+                        >
+                          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-purple-100 to-pink-100 rounded-bl-full opacity-50 group-hover:opacity-70 transition-opacity" />
+
+                          <div className="relative p-6">
+                            <div className="flex items-start justify-between mb-4">
+                              <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                                <ProjectIcon className="w-7 h-7 text-white" />
+                              </div>
+
+                              {isProjectRunning && (
+                                <div className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">
+                                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                                  Running
+                                </div>
+                              )}
+                            </div>
+
+                            <h3 className="text-lg font-bold text-gray-900 mb-2 group-hover:text-purple-600 transition-colors">
+                              {project}
+                            </h3>
+                            <p className="text-sm text-gray-600 mb-1">
+                              Type: <span className="font-medium text-gray-800">{details.type || 'unknown'}</span>
+                            </p>
+                            <p className="text-sm text-gray-600 mb-4">
+                              Files: <span className="font-medium text-gray-800">{details.file_count || 0}</span>
+                            </p>
+
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleProjectClick(project);
+                                }}
+                                className="flex-1 px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors font-medium text-sm flex items-center justify-center gap-2"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                                Edit
+                              </button>
+
+                              <button
+                                onClick={(e) => handleRunProject(project, e)}
+                                disabled={isProjectRunning}
+                                className="flex-1 px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors font-medium text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                <Play className="w-3 h-3" />
+                                {isProjectRunning ? 'Running' : 'Run'}
+                              </button>
+
+                              <button
+                                onClick={(e) => handleDeleteProjectCard(project, e)}
+                                className="px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors font-medium text-sm"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ✅ Code Tab - WITH File Explorer */}
+          {activeTab === 'code' && (
+            <>
+              {/* Left Panel - File Explorer (ONLY in Code tab) */}
+              <div className="w-80 bg-white/80 backdrop-blur-xl border-r border-gray-200/50 flex flex-col">
+                <div className="p-4 border-b border-gray-200/50 flex items-center justify-between">
+                  <h2 className="font-semibold text-gray-800 flex items-center gap-2">
+                    <FileCode className="w-4 h-4 text-purple-600" />
+                    Files
+                  </h2>
                   <button
                     onClick={createNewFile}
                     disabled={!currentProject}
-                    className="p-1.5 hover:bg-white rounded-lg transition-colors disabled:opacity-50"
-                    title="New File"
+                    className="p-2 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <FilePlus className="w-4 h-4 text-gray-600" />
+                    <FilePlus className="w-4 h-4 text-purple-600" />
                   </button>
                 </div>
+
                 <div className="flex-1 overflow-auto p-2">
                   {!currentProject ? (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-400 p-4">
-                      <Folder className="w-12 h-12 mb-2 opacity-30" />
-                      <p className="text-sm text-center">No project selected. Ask AI to create one!</p>
+                    <div className="text-center py-8 text-gray-400 text-sm">
+                      Select a project first
                     </div>
                   ) : files.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-400 p-4">
-                      <FileIcon className="w-12 h-12 mb-2 opacity-30" />
-                      <p className="text-sm text-center">No files yet.</p>
+                    <div className="text-center py-8 text-gray-400 text-sm">
+                      No files yet
                     </div>
                   ) : (
-                    files.map(file => (
-                      <div
-                        key={file.id}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer group transition-all ${selectedFile === file.id
-                          ? 'bg-purple-100 text-purple-700'
-                          : 'hover:bg-gray-100 text-gray-700'
-                          }`}
-                        onClick={() => setSelectedFile(file.id)}
-                        onContextMenu={(e) => handleContextMenu(e, file)}
-                      >
-                        <FileText className="w-4 h-4 flex-shrink-0" />
-                        {renamingFile === file.id ? (
-                          <input
-                            type="text"
-                            value={newFileName}
-                            onChange={(e) => setNewFileName(e.target.value)}
-                            onBlur={() => confirmRename(file.id)}
-                            onKeyDown={(e) => e.key === 'Enter' && confirmRename(file.id)}
-                            className="flex-1 px-2 py-0.5 text-sm border border-purple-300 rounded outline-none"
-                            autoFocus
-                          />
-                        ) : (
-                          <span className="flex-1 text-sm font-medium truncate">{file.name}</span>
-                        )}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleContextMenu(e, file);
-                          }}
-                          className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded transition-all"
-                        >
-                          <MoreVertical className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))
+                    <FolderTree
+                      tree={fileTree}
+                      onFileSelect={setSelectedFile}
+                      selectedFileId={selectedFile}
+                      onContextMenu={handleContextMenu}
+                    />
                   )}
                 </div>
               </div>
-            )}
 
-            {/* Editor/Preview Area */}
-            <div className={`${activeTab === 'code' ? 'col-span-2' : 'col-span-3'} bg-white rounded-3xl shadow-xl border border-gray-200/50 overflow-hidden flex flex-col`}>
-              {activeTab === 'code' ? (
-                <>
-                  <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200/50 bg-gradient-to-r from-purple-50/50 to-pink-50/50">
-                    <div className="flex items-center gap-3">
-                      <FileCode className="w-5 h-5 text-purple-600" />
-                      <span className="font-semibold text-gray-800">
-                        {selectedFileData?.name || 'No file selected'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
+              {/* Center Panel - Code Editor */}
+              <div className="flex-1 flex flex-col">
+                {selectedFileData ? (
+                  <>
+                    <div className="h-14 bg-white/80 backdrop-blur-xl border-b border-gray-200/50 flex items-center justify-between px-6">
+                      <div className="flex items-center gap-3">
+                        <FileText className="w-4 h-4 text-purple-600" />
+                        <span className="font-medium text-gray-800">{selectedFileData.name}</span>
+                      </div>
                       <button
                         onClick={handleSaveFile}
-                        disabled={!selectedFileData}
-                        className="p-2 hover:bg-white rounded-lg transition-colors disabled:opacity-50"
-                        title="Save"
+                        className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:shadow-lg hover:scale-105 transition-all font-medium flex items-center gap-2"
                       >
-                        <Save className="w-4 h-4 text-gray-600" />
+                        <Save className="w-4 h-4" />
+                        Save
                       </button>
-                      {/* <button
-                        onClick={() => setActiveTab('preview')}
-                        className="p-2 hover:bg-white rounded-lg transition-colors"
-                        title="Preview"
-                      >
-                        <Eye className="w-4 h-4 text-gray-600" />
-                      </button> */}
                     </div>
-                  </div>
-                  <div className="flex-1 p-6 font-mono text-sm overflow-auto bg-gradient-to-br from-gray-50 to-purple-50/20">
-                    {selectedFileData ? (
+
+                    <div className="flex-1 overflow-hidden">
                       <textarea
                         value={selectedFileData.content}
                         onChange={(e) => handleFileContentChange(e.target.value)}
-                        className="w-full h-full bg-transparent resize-none outline-none font-mono text-sm text-gray-700 leading-relaxed"
-                        placeholder="Start coding..."
-                        spellCheck={false}
+                        className="w-full h-full p-6 bg-gray-50/50 font-mono text-sm text-gray-800 resize-none focus:outline-none"
+                        spellCheck="false"
                       />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center h-full text-gray-400">
-                        <Code2 className="w-16 h-16 mb-4 opacity-20" />
-                        <p className="text-center">Select a file to edit</p>
-                      </div>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="px-6 py-4 border-b border-gray-200/50 bg-gradient-to-r from-purple-50/50 to-pink-50/50 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Eye className="w-5 h-5 text-purple-600" />
-                      <span className="font-semibold text-gray-800">Live Preview</span>
-                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                     </div>
-                    <button
-                      onClick={() => setActiveTab('code')}
-                      className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm font-medium"
-                    >
-                      Back to Code
-                    </button>
-                  </div>
-                  <div className="flex-1 overflow-hidden">
-                    {previewHTML ? (
-                      <iframe
-                        ref={iframeRef}
-                        srcDoc={previewHTML}
-                        className="w-full h-full border-0"
-                        sandbox="allow-scripts allow-same-origin"
-                        title="Live Preview"
-                      />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center h-full text-gray-400 p-8">
-                        <Eye className="w-20 h-20 mb-4 opacity-20" />
-                        <p className="text-lg font-medium mb-2">No preview available</p>
-                        <p className="text-sm text-center max-w-md">
-                          Ask AI to generate HTML/CSS/JS code
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* AI Chat */}
-            <div className="bg-white rounded-3xl shadow-xl border border-gray-200/50 overflow-hidden flex flex-col">
-              <div className="px-6 py-4 border-b border-gray-200/50 bg-gradient-to-r from-blue-50/50 to-purple-50/50">
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="w-5 h-5 text-blue-600" />
-                  <span className="font-semibold text-gray-800">AI Assistant</span>
-                </div>
-              </div>
-              <div className="flex-1 p-4 space-y-4 overflow-auto">
-                {chatMessages.map((msg, idx) => (
-                  <div key={idx} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
-                    {msg.role === 'ai' && (
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center flex-shrink-0">
-                        <Sparkles className="w-4 h-4 text-white" />
-                      </div>
-                    )}
-                    <div className={`rounded-2xl p-4 max-w-xs ${msg.role === 'ai'
-                      ? 'bg-purple-50 rounded-tl-sm text-gray-700'
-                      : 'bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-tr-sm'
-                      }`}>
-                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                    </div>
-                    {msg.role === 'user' && (
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-blue-400 flex items-center justify-center flex-shrink-0">
-                        <User className="w-4 h-4 text-white" />
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {loading && (
-                  <div className="flex gap-3">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center flex-shrink-0">
-                      <Loader2 className="w-4 h-4 text-white animate-spin" />
-                    </div>
-                    <div className="bg-purple-50 rounded-2xl rounded-tl-sm p-4 max-w-xs">
-                      <p className="text-sm text-gray-700">Processing...</p>
+                  </>
+                ) : (
+                  <div className="flex-1 flex items-center justify-center text-gray-400">
+                    <div className="text-center">
+                      <FileCode className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                      <p className="text-sm">
+                        {currentProject ? 'Select a file to edit' : 'Select a project first'}
+                      </p>
                     </div>
                   </div>
                 )}
-                <div ref={chatEndRef} />
               </div>
-              <div className="p-4 border-t border-gray-200/50">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && !loading && handleGenerate()}
-                    placeholder="Ask AI anything..."
-                    className="flex-1 px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-300 bg-gray-50 text-sm"
-                  />
-                  <button
-                    onClick={handleGenerate}
-                    disabled={loading || !prompt.trim()}
-                    className="p-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                    <Send className="w-5 h-5" />
-                  </button>
+            </>
+          )}
+
+          {/* ✅ Preview Tab - NO File Explorer */}
+          {activeTab === 'preview' && (
+            <div className="flex-1 flex flex-col bg-white">
+              {currentProject && !projectReady && currentNode ? (
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="text-center space-y-4">
+                    <Loader2 className="w-12 h-12 text-purple-600 animate-spin mx-auto" />
+                    <div className="space-y-2">
+                      <h3 className="text-lg font-semibold text-gray-800">Building Your Project...</h3>
+                      <p className="text-sm text-gray-600">Current Step: <span className="font-medium text-purple-600">{currentNode}</span></p>
+                      {completedNodes.length > 0 && (
+                        <div className="flex flex-wrap gap-2 justify-center mt-4">
+                          {completedNodes.map((node, idx) => (
+                            <div key={idx} className="px-3 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">
+                              ✓ {node}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
+              ) : previewHTML ? (
+                <iframe
+                  ref={iframeRef}
+                  srcDoc={previewHTML}
+                  className="w-full h-full border-0"
+                  title="Preview"
+                />
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-gray-400">
+                  <div className="text-center">
+                    <Eye className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p className="text-sm">
+                      {currentProject ? 'Run the project to see preview' : 'Select a project first'}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Right Panel - Chat (Always visible) */}
+          <div className="w-96 bg-white/80 backdrop-blur-xl border-l border-gray-200/50 flex flex-col">
+            <div className="p-4 border-b border-gray-200/50">
+              <h2 className="font-semibold text-gray-800 flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-purple-600" />
+                AI Assistant
+              </h2>
+            </div>
+
+            <div className="flex-1 overflow-auto p-4 space-y-4">
+              {chatMessages.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-4 py-3 ${msg.role === 'user'
+                      ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white'
+                      : 'bg-gray-100 text-gray-800'
+                      }`}
+                  >
+                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                  </div>
+                </div>
+              ))}
+              <div ref={chatEndRef} />
+            </div>
+
+            <div className="p-4 border-t border-gray-200/50">
+              <div className="flex gap-2">
+                <input
+                ref={inputRef}
+                  type="text"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleGenerate();
+                    }
+                  }}
+                  placeholder="Ask AI anything..."
+                  disabled={loading}
+                  className="flex-1 px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                />
+                <button
+                  onClick={handleGenerate}
+                  disabled={loading || !prompt.trim()}
+                  className="px-5 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:shadow-lg hover:scale-105 transition-all font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                </button>
               </div>
             </div>
           </div>
         </div>
+      </main>
 
-        {/* Terminal */}
-        {showTerminal && (
-          <div className="h-64 bg-gray-900 border-t border-gray-700 flex flex-col">
-            <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
-              <div className="flex items-center gap-2">
+      {/* Terminal Modal */}
+      {showTerminal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end justify-center z-50">
+          <div className="w-full max-w-4xl bg-gray-900 rounded-t-3xl shadow-2xl overflow-hidden animate-slide-up">
+            <div className="h-12 bg-gray-800 flex items-center justify-between px-6">
+              <div className="flex items-center gap-3">
                 <Terminal className="w-4 h-4 text-green-400" />
-                <span className="text-sm font-medium text-gray-300">Terminal</span>
+                <span className="font-medium text-gray-200">Terminal</span>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setTerminalOutput([])}
-                  className="p-1 hover:bg-gray-700 rounded transition-colors"
-                  title="Clear"
-                >
-                  <RefreshCw className="w-4 h-4 text-gray-400" />
-                </button>
-                <button
-                  onClick={() => setShowTerminal(false)}
-                  className="p-1 hover:bg-gray-700 rounded transition-colors"
-                  title="Close"
-                >
-                  <X className="w-4 h-4 text-gray-400" />
-                </button>
-              </div>
+              <button
+                onClick={() => setShowTerminal(false)}
+                className="p-1 hover:bg-gray-700 rounded transition-colors"
+              >
+                <X className="w-4 h-4 text-gray-400" />
+              </button>
             </div>
-            <div className="flex-1 overflow-auto p-4 font-mono text-sm text-green-400">
+            <div className="h-96 overflow-auto p-4 font-mono text-sm">
               {terminalOutput.map((line, idx) => (
-                <div key={idx} className="mb-1">{line}</div>
+                <div key={idx} className="text-green-400 mb-1">
+                  {line}
+                </div>
               ))}
             </div>
           </div>
-        )}
-      </main>
+        </div>
+      )}
 
       {/* Context Menu */}
       {contextMenu && (
@@ -965,28 +1307,27 @@ export default function DevDostAI() {
           />
           <div
             className="fixed z-50 bg-white rounded-xl shadow-2xl border border-gray-200 py-2 min-w-[180px]"
-            style={{ left: contextMenu.x, top: contextMenu.y }}
+            style={{ top: contextMenu.y, left: contextMenu.x }}
           >
             <button
               onClick={() => handleRename(contextMenu.file)}
-              className="w-full px-4 py-2 text-left text-sm hover:bg-purple-50 flex items-center gap-3 text-gray-700"
+              className="w-full px-4 py-2 text-left text-sm hover:bg-purple-50 flex items-center gap-3"
             >
-              <Edit2 className="w-4 h-4" />
+              <Edit2 className="w-4 h-4 text-purple-600" />
               Rename
             </button>
             <button
               onClick={() => handleCopy(contextMenu.file)}
-              className="w-full px-4 py-2 text-left text-sm hover:bg-purple-50 flex items-center gap-3 text-gray-700"
+              className="w-full px-4 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-3"
             >
-              <Copy className="w-4 h-4" />
-              Duplicate
+              <Copy className="w-4 h-4 text-blue-600" />
+              Copy
             </button>
-            <div className="border-t border-gray-200 my-1" />
             <button
               onClick={() => handleDelete(contextMenu.file.id)}
-              className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 flex items-center gap-3 text-red-600"
+              className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 flex items-center gap-3"
             >
-              <Trash2 className="w-4 h-4" />
+              <Trash2 className="w-4 h-4 text-red-600" />
               Delete
             </button>
           </div>
@@ -996,20 +1337,23 @@ export default function DevDostAI() {
       {/* New File Modal */}
       {showNewFileModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white rounded-3xl shadow-2xl p-6 w-96">
-            <h3 className="text-lg font-bold text-gray-800 mb-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-96">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">
               Create New File
             </h3>
             <input
               type="text"
               value={newFileNameInput}
               onChange={(e) => setNewFileNameInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && confirmNewFile()}
-              placeholder="filename.html"
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-300 mb-4"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') confirmNewFile();
+                if (e.key === 'Escape') setShowNewFileModal(null);
+              }}
+              placeholder="filename.ext or folder/filename.ext"
+              className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-500 mb-4"
               autoFocus
             />
-            <div className="flex gap-3">
+            <div className="flex gap-2">
               <button
                 onClick={() => setShowNewFileModal(null)}
                 className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors font-medium"
@@ -1018,7 +1362,8 @@ export default function DevDostAI() {
               </button>
               <button
                 onClick={confirmNewFile}
-                className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:shadow-lg transition-all font-medium"
+                disabled={!newFileNameInput.trim()}
+                className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:shadow-lg transition-all font-medium disabled:opacity-50"
               >
                 Create
               </button>

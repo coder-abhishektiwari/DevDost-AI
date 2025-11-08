@@ -1,0 +1,108 @@
+/* styles.css for Simple Calculator */
+
+/* Reset some default styles */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #f0f2f5;
+  font-family: Arial, Helvetica, sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+.calculator {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+  width: 320px;
+  max-width: 90%;
+  padding: 20px;
+}
+
+#display {
+  background: #222;
+  color: white;
+  font-size: 2rem;
+  text-align: right;
+  padding: 15px;
+  border-radius: 5px;
+  margin-bottom: 15px;
+  min-height: 60px;
+  word-wrap: break-word;
+}
+
+.buttons {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.btn {
+  background: #e0e0e0;
+  border: none;
+  border-radius: 5px;
+  font-size: 1.2rem;
+  padding: 15px;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.btn:hover {
+  background: #d5d5d5;
+}
+
+.btn:active {
+  transform: scale(0.95);
+}
+
+/* Operator buttons */
+.btn.operator {
+  background: #ff9500;
+  color: #fff;
+}
+
+.btn.operator:hover {
+  background: #e08e00;
+}
+
+/* Equals button */
+.btn.equal {
+  background: #34c759;
+  color: #fff;
+  grid-column: span 2;
+}
+
+.btn.equal:hover {
+  background: #2ba64e;
+}
+
+/* Clear button */
+.btn.clear {
+  background: #ff3b30;
+  color: #fff;
+  grid-column: span 2;
+}
+
+.btn.clear:hover {
+  background: #e02e27;
+}
+
+/* Responsive adjustments */
+@media (max-width: 400px) {
+  .calculator {
+    width: 90%;
+  }
+  #display {
+    font-size: 1.5rem;
+  }
+  .btn {
+    padding: 12px;
+    font-size: 1rem;
+  }
+}

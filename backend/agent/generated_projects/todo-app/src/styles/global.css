@@ -1,0 +1,88 @@
+/* Global CSS styles for the Todo App */
+
+/* Color scheme variables */
+:root {
+  --color-primary: #4a90e2;   /* Primary brand color */
+  --color-primary-dark: #357ab8;
+  --color-primary-light: #6fb3ff;
+  --color-background: #f5f5f5; /* Light gray background */
+  --color-surface: #ffffff;    /* Card / surface background */
+  --color-text-primary: #333333; /* Main text color */
+  --color-text-secondary: #777777; /* Secondary text */
+  --color-success: #28a745;
+  --color-danger: #dc3545;
+}
+
+/* Reset some default margins and paddings */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px; /* Base font size */
+  line-height: 1.5;
+}
+
+body {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 1rem; /* 16px */
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 0.5rem;
+}
+
+p {
+  margin-bottom: 1rem;
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button {
+  font-family: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+  background-color: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  transition: background-color 0.2s ease-in-out;
+}
+
+button:hover {
+  background-color: var(--color-primary-dark);
+}
+
+/* Utility classes */
+.text-center { text-align: center; }
+.mt-1 { margin-top: 0.25rem; }
+.mt-2 { margin-top: 0.5rem; }
+.mb-1 { margin-bottom: 0.25rem; }
+.mb-2 { margin-bottom: 0.5rem; }
+
+/* Container for the app */
+.app-container {
+  max-width: 600px;
+  margin: 2rem auto;
+  background: var(--color-surface);
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
