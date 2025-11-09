@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Document metadata -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Car Racing Game</title>
+
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Game container holds canvas and UI overlays -->
+    <div id="game-container">
+        <!-- Canvas for rendering the game -->
+        <canvas id="game-canvas" width="800" height="600" aria-label="2D car racing game canvas"></canvas>
+
+        <!-- UI overlay for score and game over screen -->
+        <div id="ui-overlay">
+            <div id="score" aria-live="polite">Score: 0</div>
+
+            <div id="game-over" class="hidden" role="dialog" aria-modal="true" aria-labelledby="game-over-title">
+                <h2 id="game-over-title">Game Over</h2>
+                <button id="restart-btn" type="button">Restart</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game script -->
+    <script src="script.js"></script>
+</body>
+</html>

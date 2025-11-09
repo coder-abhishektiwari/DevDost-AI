@@ -13,31 +13,21 @@ PROJECTS_ROOT.mkdir(parents=True, exist_ok=True)
 def get_project_path(project_name: str) -> pathlib.Path:
     """Get the path for a specific project"""
     return PROJECTS_ROOT / project_name
-
-
 def create_project(project_name: str) -> str:
     """Create a new project directory"""
     project_path = get_project_path(project_name)
     project_path.mkdir(parents=True, exist_ok=True)
     return str(project_path)
-
-
 def project_exists(project_name: str) -> bool:
     """Check if a project exists"""
     return get_project_path(project_name).exists()
-
-
 def list_all_projects() -> List[str]:
     """List all available projects"""
     return [p.name for p in PROJECTS_ROOT.iterdir() if p.is_dir()]
-
-
 def set_current_project(project_name: str):
     """Set the current working project (for session context)"""
     # This would be stored in session state in the graph
     pass
-
-
 def safe_path_for_project(project_name: str, path: str) -> pathlib.Path:
     """Get a safe path within a specific project"""
     project_root = get_project_path(project_name)
@@ -67,8 +57,6 @@ def create_file_tool(project_name: str, filepath: str, content: str = "") -> str
         f.write(content)
     
     return f"âœ… Created: {project_name}/{filepath}"
-
-
 @tool
 def read_file_tool(project_name: str, filepath: str) -> str:
     """Reads content from a file in the specified project.
@@ -84,8 +72,6 @@ def read_file_tool(project_name: str, filepath: str) -> str:
     
     with open(p, "r", encoding="utf-8") as f:
         return f.read()
-
-
 @tool
 def delete_file_tool(project_name: str, filepath: str) -> str:
     """Deletes a file from the specified project.
@@ -105,8 +91,6 @@ def delete_file_tool(project_name: str, filepath: str) -> str:
     elif p.is_dir():
         shutil.rmtree(p)
         return f"ðŸ—‘ï¸ Deleted directory: {project_name}/{filepath}"
-
-
 @tool
 def rename_file_tool(project_name: str, old_path: str, new_path: str) -> str:
     """Renames a file in the specified project.
@@ -126,8 +110,6 @@ def rename_file_tool(project_name: str, old_path: str, new_path: str) -> str:
     old_p.rename(new_p)
     
     return f"âœï¸ Renamed: {old_path} â†’ {new_path}"
-
-
 @tool
 def list_project_files_tool(project_name: str, directory: str = ".") -> str:
     """Lists all files in the specified project directory.
@@ -151,8 +133,6 @@ def list_project_files_tool(project_name: str, directory: str = ".") -> str:
         return "ðŸ“ No files found"
     
     return "\n".join(sorted(files))
-
-
 @tool
 def move_file_tool(project_name: str, source: str, destination: str) -> str:
     """Moves a file within the project.
@@ -172,8 +152,6 @@ def move_file_tool(project_name: str, source: str, destination: str) -> str:
     shutil.move(str(src_p), str(dst_p))
     
     return f"ðŸ“¦ Moved: {source} â†’ {destination}"
-
-
 @tool
 def copy_file_tool(project_name: str, source: str, destination: str) -> str:
     """Copies a file within the project.
@@ -215,8 +193,6 @@ def delete_project_tool(project_name: str) -> str:
     
     shutil.rmtree(project_path)
     return f"ðŸ—‘ï¸ Deleted project: {project_name}"
-
-
 @tool
 def list_projects_tool() -> str:
     """Lists all available projects."""
@@ -226,8 +202,6 @@ def list_projects_tool() -> str:
         return "ðŸ“ No projects found"
     
     return "ðŸ“ Available projects:\n" + "\n".join([f"  â€¢ {p}" for p in projects])
-
-
 @tool
 def get_project_info_tool(project_name: str) -> str:
     """Gets information about a specific project.
@@ -290,7 +264,6 @@ def run_cmd_tool(project_name: str, cmd: str, timeout: int = 30) -> str:
     except Exception as e:
         return f"âŒ Error: {str(e)}"
 
-
 # ==================== BACKWARD COMPATIBILITY ====================
 # Old tools for existing code
 
@@ -299,20 +272,14 @@ def write_file(path: str, content: str) -> str:
     """Legacy write_file - uses default project"""
     # This would use the current project from state
     return create_file_tool.run({"project_name": "default", "filepath": path, "content": content})
-
-
 @tool
 def read_file(path: str) -> str:
     """Legacy read_file - uses default project"""
     return read_file_tool.run({"project_name": "default", "filepath": path})
-
-
 @tool
 def get_current_directory() -> str:
     """Returns the projects root directory."""
     return str(PROJECTS_ROOT)
-
-
 @tool
 def list_files(directory: str = ".") -> str:
     """Legacy list_files - uses default project"""

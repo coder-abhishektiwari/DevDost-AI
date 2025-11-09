@@ -1,0 +1,93 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Time Kon Si</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        #fileInput {
+            display: block;
+            margin-bottom: 20px;
+        }
+        #displayArea {
+            min-height: 200px;
+            border: 2px dashed #ccc;
+            border-radius: 4px;
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #777;
+            background-color: #fafafa;
+        }
+        #displayArea img,
+        #displayArea video,
+        #displayArea audio {
+            max-width: 100%;
+            max-height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Time Kon Si</h1>
+        <input type="file" id="fileInput" accept="image/*,video/*,audio/*">
+        <div id="displayArea">Select a file to preview</div>
+    </div>
+
+    <script src="main.js"></script>
+    <script>
+        // Handles file selection and preview rendering
+        const fileInput = document.getElementById('fileInput');
+        const displayArea = document.getElementById('displayArea');
+
+        fileInput.addEventListener('change', () => {
+            const file = fileInput.files[0];
+            if (!file) {
+                displayArea.textContent = 'Select a file to preview';
+                return;
+            }
+
+            const url = URL.createObjectURL(file);
+            let element;
+
+            if (file.type.startsWith('image/')) {
+                element = document.createElement('img');
+                element.alt = file.name;
+            } else if (file.type.startsWith('video/')) {
+                element = document.createElement('video');
+                element.controls = true;
+            } else if (file.type.startsWith('audio/')) {
+                element = document.createElement('audio');
+                element.controls = true;
+            } else {
+                displayArea.textContent = 'Unsupported file type';
+                URL.revokeObjectURL(url);
+                return;
+            }
+
+            element.src = url;
+            // Clear previous content
+            displayArea.innerHTML = '';
+            displayArea.appendChild(element);
+        });
+    </script>
+</body>
+</html>
+```

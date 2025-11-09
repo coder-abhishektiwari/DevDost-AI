@@ -1,0 +1,126 @@
+```css
+/* -------------------------------------------------
+   Reset default margin/padding and set box-sizing
+------------------------------------------------- */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+/* -------------------------------------------------
+   Body styling – dark background, centered layout,
+   and default font family
+------------------------------------------------- */
+body {
+    background: #0a0a0a;
+    color: #fff;
+    font-family: Arial, Helvetica, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+/* -------------------------------------------------
+   Game container – relative positioning, full width,
+   and 4:3 aspect ratio
+------------------------------------------------- */
+#game-container {
+    position: relative;
+    width: 100%;
+    max-width: 100%;
+    aspect-ratio: 4 / 3;
+}
+
+/* -------------------------------------------------
+   Canvas – fills the container while preserving aspect
+------------------------------------------------- */
+#game-canvas {
+    width: 100%;
+    height: auto;
+    display: block;
+    background: #111;
+}
+
+/* -------------------------------------------------
+   UI overlay – absolute overlay covering the canvas,
+   non‑interactive by default
+------------------------------------------------- */
+#ui-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+/* -------------------------------------------------
+   Score display – visible size, color, margin,
+   and non‑interactive
+------------------------------------------------- */
+#score {
+    font-size: 1.5rem;
+    color: #ffdd00;
+    margin: 0.5rem;
+    pointer-events: none;
+}
+
+/* -------------------------------------------------
+   Game over screen – hidden by default, centered
+   with semi‑transparent background when shown
+------------------------------------------------- */
+#game-over {
+    display: none; /* hidden initially */
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+/* When visible, switch to flex layout */
+#game-over.show {
+    display: flex;
+}
+
+/* -------------------------------------------------
+   Restart button – interactive styling
+------------------------------------------------- */
+#restart-btn {
+    padding: 0.75rem 1.5rem;
+    background: #28a745;
+    color: #fff;
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    font-size: 1rem;
+    margin-top: 1rem;
+    pointer-events: auto;
+}
+
+/* -------------------------------------------------
+   Responsive adjustments for screens < 600px
+------------------------------------------------- */
+@media (max-width: 600px) {
+    #score {
+        font-size: 1.2rem;
+    }
+
+    #restart-btn {
+        padding: 0.5rem 1rem;
+        font-size: 0.9rem;
+    }
+
+    /* Reduce container size while keeping aspect ratio */
+    #game-container {
+        max-width: 100%;
+    }
+}
+```

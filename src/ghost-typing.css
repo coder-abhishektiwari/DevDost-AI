@@ -1,0 +1,17 @@
+@keyframes cursor-blink {
+  0% { border-right-color: rgba(107, 33, 168, 0.8); }
+  50% { border-right-color: transparent; }
+  100% { border-right-color: rgba(107, 33, 168, 0.8); }
+}
+
+.typing-animation {
+  border-right: 2px solid transparent;
+  animation: cursor-blink 0.8s infinite;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.typing-animation:focus {
+  animation: none;
+  border-right: none;
+}

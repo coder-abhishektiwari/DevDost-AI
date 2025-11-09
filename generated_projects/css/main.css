@@ -1,0 +1,454 @@
+/* -------------------------------------------------
+   Global Variables
+------------------------------------------------- */
+:root {
+  /* Typography */
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-size-base: 1rem;               /* 16px */
+  --line-height-base: 1.6;
+
+  /* Colors */
+  --color-primary: #3498db;
+  --color-primary-dark: #2980b9;
+  --color-secondary: #2ecc71;
+  --color-success: #27ae60;
+  --color-danger: #e74c3c;
+  --color-warning: #f1c40f;
+  --color-info: #1abc9c;
+  --color-light: #f8f9fa;
+  --color-dark: #212529;
+
+  /* Theme */
+  --bg-color: #ffffff;
+  --text-color: #212529;
+  --link-color: var(--color-primary);
+  --link-hover-color: var(--color-primary-dark);
+
+  /* Spacing */
+  --spacing-unit: 1rem; /* 16px */
+
+  /* Breakpoints */
+  --breakpoint-sm: 576px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 992px;
+  --breakpoint-xl: 1200px;
+}
+
+/* Dark theme overrides */
+[data-theme="dark"] {
+  --bg-color: #121212;
+  --text-color: #e0e0e0;
+  --link-color: var(--color-primary);
+  --link-hover-color: var(--color-primary-dark);
+}
+
+/* -------------------------------------------------
+   Reset & Base
+------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 100%; /* 16px */
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
+  background-color: var(--bg-color);
+  color: var(--text-color);
+}
+
+/* -------------------------------------------------
+   Typography
+------------------------------------------------- */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin-bottom: calc(var(--spacing-unit) / 2);
+  font-weight: 600;
+  line-height: 1.2;
+  color: inherit;
+}
+
+h1 { font-size: 2.5rem; }
+h2 { font-size: 2rem; }
+h3 { font-size: 1.75rem; }
+h4 { font-size: 1.5rem; }
+h5 { font-size: 1.25rem; }
+h6 { font-size: 1rem; }
+
+p {
+  margin-bottom: var(--spacing-unit);
+}
+
+a {
+  color: var(--link-color);
+  text-decoration: none;
+  transition: color 0.2s ease-in-out;
+}
+a:hover,
+a:focus {
+  color: var(--link-hover-color);
+  text-decoration: underline;
+}
+
+/* -------------------------------------------------
+   Layout – Container & Grid
+------------------------------------------------- */
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--spacing-unit);
+  padding-right: var(--spacing-unit);
+}
+
+/* Row */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  margin-left: calc(-0.5 * var(--spacing-unit));
+  margin-right: calc(-0.5 * var(--spacing-unit));
+}
+
+/* Column */
+.col {
+  flex: 1 0 0%;
+  max-width: 100%;
+  padding-left: calc(0.5 * var(--spacing-unit));
+  padding-right: calc(0.5 * var(--spacing-unit));
+}
+
+/* Fixed column fractions (12‑column grid) */
+[class*="col-"] {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
+/* Helper to generate column width percentages */
+@function col-percentage($span) {
+  @return (100% / 12) * $span;
+}
+
+/* Base column classes (mobile first) */
+.col-1 { flex-basis: 8.33333%; max-width: 8.33333%; }
+.col-2 { flex-basis: 16.66667%; max-width: 16.66667%; }
+.col-3 { flex-basis: 25%; max-width: 25%; }
+.col-4 { flex-basis: 33.33333%; max-width: 33.33333%; }
+.col-5 { flex-basis: 41.66667%; max-width: 41.66667%; }
+.col-6 { flex-basis: 50%; max-width: 50%; }
+.col-7 { flex-basis: 58.33333%; max-width: 58.33333%; }
+.col-8 { flex-basis: 66.66667%; max-width: 66.66667%; }
+.col-9 { flex-basis: 75%; max-width: 75%; }
+.col-10 { flex-basis: 83.33333%; max-width: 83.33333%; }
+.col-11 { flex-basis: 91.66667%; max-width: 91.66667%; }
+.col-12 { flex-basis: 100%; max-width: 100%; }
+
+/* Responsive breakpoints */
+@media (min-width: var(--breakpoint-sm)) {
+  .col-sm-1 { flex-basis: 8.33333%; max-width: 8.33333%; }
+  .col-sm-2 { flex-basis: 16.66667%; max-width: 16.66667%; }
+  .col-sm-3 { flex-basis: 25%; max-width: 25%; }
+  .col-sm-4 { flex-basis: 33.33333%; max-width: 33.33333%; }
+  .col-sm-5 { flex-basis: 41.66667%; max-width: 41.66667%; }
+  .col-sm-6 { flex-basis: 50%; max-width: 50%; }
+  .col-sm-7 { flex-basis: 58.33333%; max-width: 58.33333%; }
+  .col-sm-8 { flex-basis: 66.66667%; max-width: 66.66667%; }
+  .col-sm-9 { flex-basis: 75%; max-width: 75%; }
+  .col-sm-10 { flex-basis: 83.33333%; max-width: 83.33333%; }
+  .col-sm-11 { flex-basis: 91.66667%; max-width: 91.66667%; }
+  .col-sm-12 { flex-basis: 100%; max-width: 100%; }
+}
+
+@media (min-width: var(--breakpoint-md)) {
+  .col-md-1 { flex-basis: 8.33333%; max-width: 8.33333%; }
+  .col-md-2 { flex-basis: 16.66667%; max-width: 16.66667%; }
+  .col-md-3 { flex-basis: 25%; max-width: 25%; }
+  .col-md-4 { flex-basis: 33.33333%; max-width: 33.33333%; }
+  .col-md-5 { flex-basis: 41.66667%; max-width: 41.66667%; }
+  .col-md-6 { flex-basis: 50%; max-width: 50%; }
+  .col-md-7 { flex-basis: 58.33333%; max-width: 58.33333%; }
+  .col-md-8 { flex-basis: 66.66667%; max-width: 66.66667%; }
+  .col-md-9 { flex-basis: 75%; max-width: 75%; }
+  .col-md-10 { flex-basis: 83.33333%; max-width: 83.33333%; }
+  .col-md-11 { flex-basis: 91.66667%; max-width: 91.66667%; }
+  .col-md-12 { flex-basis: 100%; max-width: 100%; }
+}
+
+@media (min-width: var(--breakpoint-lg)) {
+  .col-lg-1 { flex-basis: 8.33333%; max-width: 8.33333%; }
+  .col-lg-2 { flex-basis: 16.66667%; max-width: 16.66667%; }
+  .col-lg-3 { flex-basis: 25%; max-width: 25%; }
+  .col-lg-4 { flex-basis: 33.33333%; max-width: 33.33333%; }
+  .col-lg-5 { flex-basis: 41.66667%; max-width: 41.66667%; }
+  .col-lg-6 { flex-basis: 50%; max-width: 50%; }
+  .col-lg-7 { flex-basis: 58.33333%; max-width: 58.33333%; }
+  .col-lg-8 { flex-basis: 66.66667%; max-width: 66.66667%; }
+  .col-lg-9 { flex-basis: 75%; max-width: 75%; }
+  .col-lg-10 { flex-basis: 83.33333%; max-width: 83.33333%; }
+  .col-lg-11 { flex-basis: 91.66667%; max-width: 91.66667%; }
+  .col-lg-12 { flex-basis: 100%; max-width: 100%; }
+}
+
+@media (min-width: var(--breakpoint-xl)) {
+  .col-xl-1 { flex-basis: 8.33333%; max-width: 8.33333%; }
+  .col-xl-2 { flex-basis: 16.66667%; max-width: 16.66667%; }
+  .col-xl-3 { flex-basis: 25%; max-width: 25%; }
+  .col-xl-4 { flex-basis: 33.33333%; max-width: 33.33333%; }
+  .col-xl-5 { flex-basis: 41.66667%; max-width: 41.66667%; }
+  .col-xl-6 { flex-basis: 50%; max-width: 50%; }
+  .col-xl-7 { flex-basis: 58.33333%; max-width: 58.33333%; }
+  .col-xl-8 { flex-basis: 66.66667%; max-width: 66.66667%; }
+  .col-xl-9 { flex-basis: 75%; max-width: 75%; }
+  .col-xl-10 { flex-basis: 83.33333%; max-width: 83.33333%; }
+  .col-xl-11 { flex-basis: 91.66667%; max-width: 91.66667%; }
+  .col-xl-12 { flex-basis: 100%; max-width: 100%; }
+}
+
+/* -------------------------------------------------
+   Utility Classes
+------------------------------------------------- */
+.text-center { text-align: center; }
+.text-right { text-align: right; }
+.mt-1 { margin-top: calc(var(--spacing-unit) * 0.25); }
+.mt-2 { margin-top: calc(var(--spacing-unit) * 0.5); }
+.mt-3 { margin-top: var(--spacing-unit); }
+.mb-1 { margin-bottom: calc(var(--spacing-unit) * 0.25); }
+.mb-2 { margin-bottom: calc(var(--spacing-unit) * 0.5); }
+.mb-3 { margin-bottom: var(--spacing-unit); }
+.p-1 { padding: calc(var(--spacing-unit) * 0.25); }
+.p-2 { padding: calc(var(--spacing-unit) * 0.5); }
+.p-3 { padding: var(--spacing-unit); }
+
+/* -------------------------------------------------
+   Buttons
+------------------------------------------------- */
+.btn {
+  display: inline-block;
+  font-weight: 600;
+  color: #fff;
+  background-color: var(--color-primary);
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  text-align: center;
+  text-decoration: none;
+  transition: background-color 0.2s ease-in-out;
+}
+.btn:hover,
+.btn:focus {
+  background-color: var(--color-primary-dark);
+}
+.btn-secondary {
+  background-color: var(--color-secondary);
+}
+.btn-secondary:hover,
+.btn-secondary:focus {
+  background-color: #27ae60;
+}
+
+/* -------------------------------------------------
+   Forms
+------------------------------------------------- */
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ced4da;
+  border-radius: 0.25rem;
+  background-color: #fff;
+  color: var(--text-color);
+  transition: border-color 0.2s ease-in-out;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+/* -------------------------------------------------
+   Images & Media
+------------------------------------------------- */
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* -------------------------------------------------
+   Print Styles
+------------------------------------------------- */
+@media print {
+  body {
+    background: #fff;
+    color: #000;
+  }
+  a {
+    text-decoration: underline;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
+
+/* -------------------------------------------------
+   Theme Variables
+   ------------------------------------------------- */
+
+/* Light theme (default) */
+:root {
+  /* Core colors */
+  --color-bg: #ffffff;
+  --color-surface: #f5f5f5;
+  --color-primary: #6200ee;
+  --color-primary-variant: #3700b3;
+  --color-secondary: #03dac6;
+  --color-secondary-variant: #018786;
+  --color-error: #b00020;
+  --color-on-primary: #ffffff;
+  --color-on-secondary: #000000;
+  --color-on-surface: #000000;
+  --color-on-bg: #000000;
+  --color-on-error: #ffffff;
+
+  /* Text */
+  --font-family-base: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-size-base: 1rem;
+  --line-height-base: 1.5;
+
+  /* Spacing */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+
+  /* Transition */
+  --transition-duration: 0.3s;
+  --transition-easing: ease-in-out;
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+  --color-bg: #121212;
+  --color-surface: #1e1e1e;
+  --color-primary: #bb86fc;
+  --color-primary-variant: #3700b3;
+  --color-secondary: #03dac6;
+  --color-secondary-variant: #03dac6;
+  --color-error: #cf6679;
+  --color-on-primary: #000000;
+  --color-on-secondary: #000000;
+  --color-on-surface: #ffffff;
+  --color-on-bg: #ffffff;
+  --color-on-error: #000000;
+}
+
+/* -------------------------------------------------
+   Global Styles & Transitions
+   ------------------------------------------------- */
+
+html {
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
+  background-color: var(--color-bg);
+  color: var(--color-on-bg);
+  transition: background-color var(--transition-duration) var(--transition-easing),
+              color var(--transition-duration) var(--transition-easing);
+}
+
+/* Apply smooth transitions to most UI elements */
+*,
+*::before,
+*::after {
+  transition: background-color var(--transition-duration) var(--transition-easing),
+              color var(--transition-duration) var(--transition-easing),
+              border-color var(--transition-duration) var(--transition-easing),
+              box-shadow var(--transition-duration) var(--transition-easing);
+}
+
+/* Example component styles using the variables */
+button,
+input,
+select,
+textarea {
+  background-color: var(--color-surface);
+  color: var(--color-on-surface);
+  border: 1px solid var(--color-on-surface);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: 4px;
+  font: inherit;
+}
+
+/* Primary button */
+.button-primary {
+  background-color: var(--color-primary);
+  color: var(--color-on-primary);
+  border: none;
+}
+
+/* Secondary button */
+.button-secondary {
+  background-color: var(--color-secondary);
+  color: var(--color-on-secondary);
+  border: none;
+}
+
+/* Error state */
+.error {
+  background-color: var(--color-error);
+  color: var(--color-on-error);
+}
+
+/* Utility classes for spacing */
+.mt-xs { margin-top: var(--spacing-xs); }
+.mt-sm { margin-top: var(--spacing-sm); }
+.mt-md { margin-top: var(--spacing-md); }
+.mt-lg { margin-top: var(--spacing-lg); }
+.mt-xl { margin-top: var(--spacing-xl); }
+
+.mb-xs { margin-bottom: var(--spacing-xs); }
+.mb-sm { margin-bottom: var(--spacing-sm); }
+.mb-md { margin-bottom: var(--spacing-md); }
+.mb-lg { margin-bottom: var(--spacing-lg); }
+.mb-xl { margin-bottom: var(--spacing-xl); }
+
+/* -------------------------------------------------
+   Theme Switch Helper (optional)
+   ------------------------------------------------- */
+
+/* When JavaScript toggles the attribute on <html> or <body> */
+html[data-theme="dark"],
+body[data-theme="dark"] {
+  background-color: var(--color-bg);
+  color: var(--color-on-bg);
+}

@@ -1,0 +1,54 @@
+/* style.css - UTF-8 */
+
+/* CSS Reset */
+* {
+  margin: 0;
+  padding: 0;
+background: black;
+  box-sizing: border-box;
+}
+
+/* Body styling */
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  background-color: #f0f4f8;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+/* Header styling */
+h1 {
+  color: #0066cc; /* primary color */
+  margin: 20px 0;
+}
+
+/* Action button styling */
+#actionBtn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  background-color: #0066cc;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background-color 0.3s ease;
+}
+
+#actionBtn:hover {
+  background-color: #004c99; /* darker shade on hover */
+}
+
+/* Output container styling */
+.output {
+  margin-top: 20px;
+  padding: 15px;
+  border: 1px solid #ddd;
+  background-color: #ffffff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 600px;
+  border-radius: 4px;
+}

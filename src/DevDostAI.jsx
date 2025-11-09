@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useRef } from "react";
-import { Sparkles, Code2, Eye, User, MessageSquare, Play, Save, FileCode, MoreVertical, Edit2, Copy, Trash2, FileText, FilePlus, Download, Send, Loader2, FileIcon, Folder, FolderOpen, ChevronDown, ChevronRight, Terminal, X, RefreshCw, Wifi, WifiOff, Laptop, Globe, Smartphone, Database, Server, Layout, Package, Zap, Coffee } from 'lucide-react';
+import React, { useState, useEffect, useRef, Component } from "react";
+import { Sparkles, Code2, Eye, User, MessageSquare, Play, Save, FileCode, MoreVertical, Edit2, Copy, Trash2, FileText, FilePlus, Download, Send, Loader2, FileIcon, Folder, FolderOpen, ChevronDown, ChevronRight, Terminal, X, RefreshCw, Wifi, WifiOff, Laptop, Globe, Smartphone, Database, Server, Layout, Package, Zap, Coffee, Scissors, Clipboard, Plus, MessageCircle, History } from 'lucide-react';
 import { io } from "socket.io-client";
+import PropTypes from 'prop-types';
+import './ghost-typing.css';
 
 // Socket with auto-reconnect
 export const socket = io("http://localhost:5000", {
@@ -9,8 +11,6 @@ export const socket = io("http://localhost:5000", {
   reconnectionDelay: 1000,
   reconnectionAttempts: 5
 });
-
-
 
 // Project icons mapping
 const PROJECT_ICONS = {
@@ -40,7 +40,7 @@ const getProjectIcon = (projectName, projectType) => {
   return PROJECT_ICONS.default;
 };
 
-// ✅ NEW: Build folder tree structure from flat file list
+// Build folder tree structure from flat file list
 const buildFileTree = (files) => {
   const tree = {};
 
@@ -50,11 +50,9 @@ const buildFileTree = (files) => {
 
     parts.forEach((part, idx) => {
       if (idx === parts.length - 1) {
-        // It's a file
         if (!current.__files) current.__files = [];
         current.__files.push({ ...file, displayName: part });
       } else {
-        // It's a folder
         if (!current[part]) {
           current[part] = {};
         }
@@ -66,12 +64,26 @@ const buildFileTree = (files) => {
   return tree;
 };
 
-// ✅ NEW: Folder Tree Component
-const FolderTree = ({ tree, level = 0, onFileSelect, selectedFileId, onContextMenu }) => {
-  const [collapsed, setCollapsed] = useState({});
+// Folder Tree Component
+const FolderTree = ({
+  tree,
+  level = 0,
+  onFileSelect,
+  selectedFileId,
+  onContextMenu,
+  renamingFile,
+  newFileName,
+  setNewFileName,
+  confirmRename,
+  setRenamingFile,
+  collapsedMap = {},
+  setCollapsedMap = () => { },
+  onMoveFile = () => { },
+  basePath = ''
+}) => {
 
   const toggleFolder = (path) => {
-    setCollapsed(prev => ({ ...prev, [path]: !prev[path] }));
+    setCollapsedMap(prev => ({ ...prev, [path]: !prev[path] }));
   };
 
   const folders = Object.keys(tree).filter(k => k !== '__files');
@@ -79,15 +91,29 @@ const FolderTree = ({ tree, level = 0, onFileSelect, selectedFileId, onContextMe
 
   return (
     <div className="select-none">
-      {/* Folders first */}
       {folders.map(folderName => {
         const folderPath = `${level}_${folderName}`;
-        const isCollapsed = collapsed[folderPath];
+        const isCollapsed = !!collapsedMap[folderPath];
+        const folderFullPath = basePath ? `${basePath}/${folderName}` : folderName;
 
         return (
           <div key={folderPath}>
             <button
               onClick={() => toggleFolder(folderPath)}
+              onContextMenu={(e) => onContextMenu && onContextMenu(e, { isFolder: true, path: folderFullPath, name: folderName })}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                try {
+                  const data = e.dataTransfer.getData('text/plain');
+                  if (data) {
+                    const payload = JSON.parse(data);
+                    onMoveFile && onMoveFile(payload.id, folderFullPath);
+                  }
+                } catch (err) {
+                  console.error('Invalid drag data', err);
+                }
+              }}
               className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 rounded-lg transition-colors text-left"
               style={{ paddingLeft: `${level * 12 + 12}px` }}
             >
@@ -111,53 +137,167 @@ const FolderTree = ({ tree, level = 0, onFileSelect, selectedFileId, onContextMe
                 onFileSelect={onFileSelect}
                 selectedFileId={selectedFileId}
                 onContextMenu={onContextMenu}
+                renamingFile={renamingFile}
+                newFileName={newFileName}
+                setNewFileName={setNewFileName}
+                confirmRename={confirmRename}
+                setRenamingFile={setRenamingFile}
+                collapsedMap={collapsedMap}
+                setCollapsedMap={setCollapsedMap}
+                onMoveFile={onMoveFile}
+                basePath={folderFullPath}
               />
             )}
           </div>
         );
       })}
 
-      {/* Files */}
       {files.map(file => (
-        <button
-          key={file.id}
-          onClick={() => onFileSelect(file.id)}
-          onContextMenu={(e) => onContextMenu(e, file)}
-          className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all text-left ${selectedFileId === file.id
-            ? 'bg-purple-100 text-purple-900 shadow-sm'
-            : 'hover:bg-gray-100 text-gray-700'
-            }`}
-          style={{ paddingLeft: `${level * 12 + 28}px` }}
-        >
-          <FileText className="w-4 h-4 flex-shrink-0" />
-          <span className="text-sm font-medium truncate">{file.displayName}</span>
-        </button>
+        renamingFile === file.id ? (
+          <div key={file.id} className="flex items-center gap-2 px-3 py-1.5" style={{ paddingLeft: `${level * 12 + 28}px` }}>
+            <input
+              value={newFileName}
+              onChange={(e) => setNewFileName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") confirmRename(file.id);
+                if (e.key === "Escape") setRenamingFile(null);
+              }}
+              className="px-2 py-1 text-sm border rounded w-full"
+              autoFocus
+            />
+            <button onClick={() => confirmRename(file.id)} className="text-green-600 font-bold text-sm">✔</button>
+            <button onClick={() => setRenamingFile(null)} className="text-red-600 font-bold text-sm">✖</button>
+          </div>
+        ) : (
+          <button
+            key={file.id}
+            draggable
+            onDragStart={(e) => e.dataTransfer.setData('text/plain', JSON.stringify({ id: file.id, name: file.name }))}
+            onClick={() => onFileSelect(file.id)}
+            onContextMenu={(e) => onContextMenu(e, file)}
+            className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all text-left ${selectedFileId === file.id
+              ? 'bg-purple-100 text-purple-900 shadow-sm'
+              : 'hover:bg-gray-100 text-gray-700'
+              }`}
+            style={{ paddingLeft: `${level * 12 + 28}px` }}
+          >
+            <FileText className="w-4 h-4 flex-shrink-0" />
+            <span className="text-sm font-medium truncate">{file.displayName}</span>
+          </button>
+        )
       ))}
     </div>
   );
 };
 
+FolderTree.propTypes = {
+  tree: PropTypes.object.isRequired,
+  level: PropTypes.number,
+  onFileSelect: PropTypes.func.isRequired,
+  selectedFileId: PropTypes.string,
+  onContextMenu: PropTypes.func.isRequired,
+  renamingFile: PropTypes.string,
+  newFileName: PropTypes.string,
+  setNewFileName: PropTypes.func.isRequired,
+  confirmRename: PropTypes.func.isRequired,
+  setRenamingFile: PropTypes.func.isRequired,
+  collapsedMap: PropTypes.object,
+  setCollapsedMap: PropTypes.func,
+  onMoveFile: PropTypes.func,
+  basePath: PropTypes.string
+};
+
 export default function DevDostAI() {
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
-  const [chatMessages, setChatMessages] = useState([
-    { role: 'ai', content: "👋 Hi! I'm DevDost AI - Your coding assistant!\n\nI can help you with:\n✅ Creating projects\n✅ Running/stopping projects\n✅ Creating/editing/deleting files\n✅ Renaming/copying files\n✅ General coding questions\n\nJust tell me what you need! 💜" }
-  ]);
+
+  // ✅ NEW: Chat History System
+  const [chats, setChats] = useState(() => {
+    try {
+      const saved = localStorage.getItem('devdost_chats');
+      if (saved) return JSON.parse(saved);
+      return [{
+        id: 'default',
+        name: 'New Chat',
+        messages: [{ role: 'ai', content: "👋 Hi! I'm DevDost AI - Your coding assistant!\n\nI can help you with:\n✅ Creating projects\n✅ Running/stopping projects\n✅ Creating/editing/deleting files\n✅ Renaming/copying files\n✅ General coding questions\n\nJust tell me what you need! 💜" }],
+        currentProject: null,
+        selectedFile: null,
+        files: [],
+        timestamp: Date.now()
+      }];
+    } catch (e) {
+      return [{
+        id: 'default',
+        name: 'New Chat',
+        messages: [{ role: 'ai', content: "👋 Hi! I'm DevDost AI!" }],
+        currentProject: null,
+        selectedFile: null,
+        files: [],
+        timestamp: Date.now()
+      }];
+    }
+  });
+
+  const [currentChatId, setCurrentChatId] = useState(() => {
+    try {
+      return localStorage.getItem('devdost_currentChatId') || 'default';
+    } catch (e) {
+      return 'default';
+    }
+  });
+
+  const [showChatHistory, setShowChatHistory] = useState(false);
+
+  // Get current chat
+  const currentChat = chats.find(c => c.id === currentChatId) || chats[0];
+  const chatMessages = currentChat.messages;
+  const setChatMessages = (updater) => {
+    setChats(prevChats => {
+      return prevChats.map(chat => {
+        if (chat.id === currentChatId) {
+          const newMessages = typeof updater === 'function' ? updater(chat.messages) : updater;
+          return { ...chat, messages: newMessages, timestamp: Date.now() };
+        }
+        return chat;
+      });
+    });
+  };
+
   const chatEndRef = useRef(null);
   const iframeRef = useRef(null);
   const inputRef = useRef(null);
 
-  const [activeTab, setActiveTab] = useState('projects');
-  const [files, setFiles] = useState([]);
+  // ✅ FIX 1: Active Tab persistence
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      return localStorage.getItem('devdost_activeTab') || 'projects';
+    } catch (e) {
+      return 'projects';
+    }
+  });
+
+  const [files, setFiles] = useState(currentChat.files || []);
   const [fileTree, setFileTree] = useState({});
   const [projects, setProjects] = useState([]);
   const [projectsDetails, setProjectsDetails] = useState({});
-  const [currentProject, setCurrentProject] = useState(null);
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [currentProject, setCurrentProject] = useState(currentChat.currentProject);
+  const currentProjectRef = useRef(currentProject);
+
+  useEffect(() => { currentProjectRef.current = currentProject; }, [currentProject]);
+
+  const [selectedFile, setSelectedFile] = useState(currentChat.selectedFile);
   const [contextMenu, setContextMenu] = useState(null);
   const [renamingFile, setRenamingFile] = useState(null);
   const [newFileName, setNewFileName] = useState('');
   const [showNewFileModal, setShowNewFileModal] = useState(null);
+  const [clipboard, setClipboard] = useState(null);
+  const [folderCollapsed, setFolderCollapsed] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('devdost_collapsed') || '{}');
+    } catch (e) {
+      return {};
+    }
+  });
   const [newFileNameInput, setNewFileNameInput] = useState('');
   const [previewHTML, setPreviewHTML] = useState('');
   const [isRunning, setIsRunning] = useState(false);
@@ -171,32 +311,140 @@ export default function DevDostAI() {
 
   const [socketConnected, setSocketConnected] = useState(false);
   const [agentProgress, setAgentProgress] = useState({ visible: false, message: "", node: "" });
+  const [isLoading, setIsLoading] = useState({
+    files: false,
+    projects: false
+  });
+
+  // Ghost typing animation states
+  const [currentTypingFile, setCurrentTypingFile] = useState(null);
+  const [typingContent, setTypingContent] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const typingSpeed = 10;
+  const typingTimeout = useRef(null);
+
+  // Function to simulate ghost typing
+  const simulateTyping = async (content, onComplete) => {
+    setIsTyping(true);
+    let currentText = '';
+
+    for (let i = 0; i < content.length; i++) {
+      currentText += content[i];
+      setTypingContent(currentText);
+      await new Promise(resolve => {
+        typingTimeout.current = setTimeout(resolve, typingSpeed);
+      });
+    }
+
+    setIsTyping(false);
+    if (onComplete) onComplete();
+  };
+
+  // Clean up typing animation on unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimeout.current) {
+        clearTimeout(typingTimeout.current);
+      }
+    };
+  }, []);
 
   // Socket connection management
   useEffect(() => {
     if (!socket) return;
 
-    socket.on("connect", () => {
-      console.log("✅ Socket connected");
-      setSocketConnected(true);
-    });
+    let mounted = true;
 
-    socket.on("disconnect", () => {
-      console.log("❌ Socket disconnected");
-      setSocketConnected(false);
-    });
+    const handleConnect = () => {
+      if (mounted) {
+        console.log("✅ Socket connected");
+        setSocketConnected(true);
+      }
+    };
 
-    socket.on("connect_error", (error) => {
-      console.error("Socket connection error:", error);
-      setSocketConnected(false);
-    });
+    const handleDisconnect = () => {
+      if (mounted) {
+        console.log("❌ Socket disconnected");
+        setSocketConnected(false);
+      }
+    };
+
+    const handleError = (error) => {
+      if (mounted) {
+        console.error("Socket connection error:", error);
+        setSocketConnected(false);
+      }
+    };
+
+    socket.on("connect", handleConnect);
+    socket.on("disconnect", handleDisconnect);
+    socket.on("connect_error", handleError);
 
     return () => {
-      socket.off("connect");
-      socket.off("disconnect");
-      socket.off("connect_error");
+      mounted = false;
+      socket.off("connect", handleConnect);
+      socket.off("disconnect", handleDisconnect);
+      socket.off("connect_error", handleError);
     };
   }, []);
+
+  // ✅ NEW: Save chats to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem('devdost_chats', JSON.stringify(chats));
+    } catch (e) {
+      console.error('Error saving chats:', e);
+    }
+  }, [chats]);
+
+  // ✅ NEW: Save current chat ID
+  useEffect(() => {
+    try {
+      localStorage.setItem('devdost_currentChatId', currentChatId);
+    } catch (e) { }
+  }, [currentChatId]);
+
+  // ✅ FIX 1: Save active tab
+  useEffect(() => {
+    try {
+      localStorage.setItem('devdost_activeTab', activeTab);
+    } catch (e) { }
+  }, [activeTab]);
+
+  // ✅ NEW: Update current chat's state when project/files/selectedFile change
+  useEffect(() => {
+    setChats(prevChats => {
+      return prevChats.map(chat => {
+        if (chat.id === currentChatId) {
+          return {
+            ...chat,
+            currentProject,
+            selectedFile,
+            files,
+            timestamp: Date.now()
+          };
+        }
+        return chat;
+      });
+    });
+  }, [currentProject, selectedFile, files, currentChatId]);
+
+  // ✅ NEW: Load chat's state when switching chats
+  useEffect(() => {
+    const chat = chats.find(c => c.id === currentChatId);
+    if (chat) {
+      setCurrentProject(chat.currentProject);
+      setSelectedFile(chat.selectedFile);
+      setFiles(chat.files || []);
+      setFileTree(buildFileTree(chat.files || []));
+    }
+  }, [currentChatId]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('devdost_collapsed', JSON.stringify(folderCollapsed || {}));
+    } catch (e) { }
+  }, [folderCollapsed]);
 
   // Agent node tracking
   useEffect(() => {
@@ -222,7 +470,12 @@ export default function DevDostAI() {
           }
           return prev;
         });
-        setTimeout(() => setCurrentNode(null), 500);
+
+        // ✅ Hide progress indicator after small delay
+        setTimeout(() => {
+          setCurrentNode(null);
+          setAgentProgress({ visible: false, message: "", node: "" });
+        }, 500);
       }
     });
 
@@ -236,6 +489,7 @@ export default function DevDostAI() {
   }, []);
 
   const fetchProjects = async () => {
+    setIsLoading(prev => ({ ...prev, projects: true }));
     try {
       const res = await fetch("http://localhost:5000/projects");
       const data = await res.json();
@@ -254,36 +508,39 @@ export default function DevDostAI() {
       setProjectsDetails(details);
     } catch (err) {
       console.error("Error fetching projects:", err);
+    } finally {
+      setIsLoading(prev => ({ ...prev, projects: false }));
     }
   };
 
   const fetchFiles = async (projectName = null) => {
+    setIsLoading(prev => ({ ...prev, files: true }));
     try {
       if (!projectName) {
         setFiles([]);
         setFileTree({});
+        setSelectedFile(null);
         return;
       }
 
       const res = await fetch(`http://localhost:5000/get_files?project=${projectName}`);
       const data = await res.json();
       const projectFiles = data.filter(f => f.project === projectName);
+      const tree = buildFileTree(projectFiles);
+
+      const firstFileId = projectFiles.length > 0 ? projectFiles[0].id : null;
 
       setFiles(projectFiles);
-
-      // ✅ Build folder tree
-      const tree = buildFileTree(projectFiles);
       setFileTree(tree);
+      setSelectedFile(firstFileId);
 
-      if (projectFiles.length > 0 && !selectedFile) {
-        setSelectedFile(projectFiles[0].id);
+      if (firstFileId) {
+        updatePreview(projectFiles);
       }
-
-      updatePreview(projectFiles);
-    } catch (err) {
-      console.error("Error fetching files:", err);
-      setFiles([]);
-      setFileTree({});
+    } catch (error) {
+      console.error("Error fetching files:", error);
+    } finally {
+      setIsLoading(prev => ({ ...prev, files: false }));
     }
   };
 
@@ -301,9 +558,27 @@ export default function DevDostAI() {
   useEffect(() => {
     if (!socket) return;
 
+    socket.on("chat_name_generated", (data) => {
+      console.log("📝 Chat name generated:", data.name);
+
+      // Update chats state - THIS UPDATES UI AUTOMATICALLY
+      setChats(prevChats =>
+        prevChats.map(c =>
+          c.id === data.chat_id
+            ? {
+              ...c,
+              name: data.name,
+              isNamed: true,
+              timestamp: Date.now()
+            }
+            : c
+        )
+      );
+    });
+
     socket.on("chat_response", (data) => {
       console.log("📩 FINAL RESPONSE:", data);
-      setLoading(false); // <--- IMPORTANT
+      setLoading(false);
       setAgentProgress({ visible: false, message: "", node: "" });
       setCurrentNode(null);
 
@@ -312,33 +587,54 @@ export default function DevDostAI() {
       if (data.current_project) setCurrentProject(data.current_project);
     });
 
+
     socket.on("chat_error", (data) => {
       console.log("❌ CHAT ERROR:", data);
+      setLoading(false);
+      setAgentProgress({ visible: false, message: "", node: "" }); // ✅
+      setCurrentNode(null); // ✅
+
       setChatMessages(prev => [...prev, { role: 'ai', content: "Error: " + data.error }]);
     });
 
     socket.on("file_updated", (data) => {
-      if (data.project === currentProject) {
-        setFiles((prev) => {
-          const updated = prev.map((f) =>
-            f.name === data.name ? { ...f, content: data.content } : f
-          );
-          updatePreview(updated);
-          const tree = buildFileTree(updated);
-          setFileTree(tree);
-          return updated;
+      if (!data.id) data.id = crypto.randomUUID();
+
+      if (data.project === currentProjectRef.current) {
+        setCurrentTypingFile(data.id);
+        setSelectedFile(data.id);
+        setActiveTab('code');
+
+        simulateTyping(data.content, () => {
+          setFiles((prev) => {
+            const updated = prev.map((f) =>
+              f.name === data.name ? { ...f, content: data.content } : f
+            );
+            updatePreview(updated);
+            const tree = buildFileTree(updated);
+            setFileTree(tree);
+            return updated;
+          });
         });
       }
     });
 
     socket.on("file_created", (data) => {
-      if (data.project === currentProject) {
-        setFiles((prev) => {
-          const updated = [...prev, data];
-          updatePreview(updated);
-          const tree = buildFileTree(updated);
-          setFileTree(tree);
-          return updated;
+      if (!data.id) data.id = crypto.randomUUID();
+
+      if (data.project === currentProjectRef.current) {
+        setCurrentTypingFile(data.id);
+        setSelectedFile(data.id);
+        setActiveTab('code');
+
+        simulateTyping(data.content || '', () => {
+          setFiles((prev) => {
+            const updated = [...prev, data];
+            updatePreview(updated);
+            const tree = buildFileTree(updated);
+            setFileTree(tree);
+            return updated;
+          });
         });
       }
     });
@@ -346,19 +642,16 @@ export default function DevDostAI() {
     socket.on("ai_progress", (data) => {
       console.log('📡 RECEIVED ai_progress:', data.message);
 
-      // ✅ Update agent progress
       setAgentProgress({
         visible: true,
         message: data.message,
         node: currentNode || "processing"
       });
 
-      // ✅ Add to chat with proper formatting
       setChatMessages(prev => {
-        // Avoid duplicate messages
         const lastMsg = prev[prev.length - 1];
         if (lastMsg?.content === data.message && lastMsg?.type === 'progress') {
-          return prev; // Skip duplicate
+          return prev;
         }
 
         return [...prev, {
@@ -397,7 +690,16 @@ export default function DevDostAI() {
         if (data.current_project) {
           setCurrentProject(data.current_project);
           fetchProjects();
-          setTimeout(() => fetchFiles(data.current_project), 500);
+          setActiveTab('code');
+
+          setTimeout(() => {
+            fetchFiles(data.current_project);
+
+            setTimeout(() => {
+              handleRunProject(data.current_project);
+              setActiveTab('preview');
+            }, 1000);
+          }, 500);
         }
       }
     });
@@ -415,18 +717,23 @@ export default function DevDostAI() {
     });
 
     socket.on("file_deleted", (data) => {
-      if (data.project === currentProject) {
+      if (!data.id) data.id = crypto.randomUUID();
+
+      if (data.project === currentProjectRef.current) {
         setFiles((prev) => {
           const updated = prev.filter(f => f.name !== data.name);
           const tree = buildFileTree(updated);
           setFileTree(tree);
           return updated;
         });
+        fetchProjects();
       }
     });
 
     socket.on("file_renamed", (data) => {
-      if (data.project === currentProject) {
+      if (!data.id) data.id = crypto.randomUUID();
+
+      if (data.project === currentProjectRef.current) {
         setFiles((prev) => {
           const updated = prev.map((f) =>
             f.name === data.oldName ? { ...f, name: data.newName } : f
@@ -435,10 +742,12 @@ export default function DevDostAI() {
           setFileTree(tree);
           return updated;
         });
+        fetchProjects();
       }
     });
 
-    socket.on("project_deleted", () => {
+    socket.on("project_deleted", (data) => {
+      if (!data.id) data.id = crypto.randomUUID();
       fetchProjects();
     });
 
@@ -467,6 +776,7 @@ export default function DevDostAI() {
     });
 
     return () => {
+      socket.off("chat_name_generated");
       socket.off("chat_response");
       socket.off("chat_error");
       socket.off("file_updated");
@@ -507,9 +817,38 @@ export default function DevDostAI() {
   };
 
   useEffect(() => {
-    updatePreview(files);
-  }, [files]);
+    if (isRunning && currentProject) {
+      updatePreview(files);
+    }
+  }, [files, isRunning]);
 
+  // ✅ NEW: Create new chat
+  const createNewChat = () => {
+    const newChat = {
+      id: 'chat_' + Date.now(),
+      name: `Chat ${chats.length + 1}`,
+      messages: [{ role: 'ai', content: "👋 Hi! I'm DevDost AI - Your coding assistant!" }],
+      currentProject: null,
+      selectedFile: null,
+      files: [],
+      timestamp: Date.now()
+    };
+    setChats(prev => [...prev, newChat]);
+    setCurrentChatId(newChat.id);
+    setShowChatHistory(false);
+  };
+
+  // ✅ NEW: Delete chat
+  const deleteChat = (chatId) => {
+    if (chats.length === 1) {
+      alert("Cannot delete the last chat!");
+      return;
+    }
+    setChats(prev => prev.filter(c => c.id !== chatId));
+    if (currentChatId === chatId) {
+      setCurrentChatId(chats[0].id);
+    }
+  };
 
   async function handleGenerate() {
     if (!prompt.trim()) return;
@@ -518,7 +857,7 @@ export default function DevDostAI() {
       role: 'user',
       content: prompt
     };
-
+    const userPrompt = prompt;
     setChatMessages(prev => [...prev, userMessage]);
     setPrompt('');
     setLoading(true);
@@ -527,7 +866,6 @@ export default function DevDostAI() {
     setAgentProgress({ visible: true, message: 'Initializing...', node: 'initializing' });
 
     try {
-      // ✅ CHECK IF SOCKET IS CONNECTED
       if (!socket || !socketConnected) {
         setChatMessages(prev => [...prev, {
           role: 'ai',
@@ -540,14 +878,16 @@ export default function DevDostAI() {
 
       console.log('📤 Sending message via SocketIO...');
 
-      // ✅ USE SOCKET.EMIT instead of fetch POST
+      const isFirstUserMessage = currentChat.messages.filter(m => m.role === 'user').length === 0;
+
       socket.emit('chat_message', {
-        message: prompt || userMessage.content,
+        message: userPrompt || userMessage.content,
         session_id: sessionId,
-        chat_history: chatMessages
+        chat_history: chatMessages,
+        chat_id: currentChatId,
+        is_first_message: isFirstUserMessage && !currentChat.isNamed
       });
 
-      // No need to wait for response - socket listeners handle it
       console.log('✅ Message sent, waiting for ai_progress events...');
 
     } catch (err) {
@@ -560,7 +900,6 @@ export default function DevDostAI() {
       setLoading(false);
     }
   }
-
 
   const handleProjectClick = (projectName) => {
     setCurrentProject(projectName);
@@ -696,7 +1035,10 @@ export default function DevDostAI() {
         });
 
         if (res.ok) {
-          setFiles(files.map(f => f.id === fileId ? { ...f, name: newFileName.trim() } : f));
+          const updated = files.map(f => f.id === fileId ? { ...f, name: newFileName.trim() } : f);
+          setFiles(updated);
+          setFileTree(buildFileTree(updated));
+          fetchProjects();
         }
       } catch (err) {
         console.error("Error renaming file:", err);
@@ -706,27 +1048,168 @@ export default function DevDostAI() {
   };
 
   const handleCopy = async (file) => {
-    const newName = `${file.name.replace(/\.(jsx?|css|html|py|txt)$/, '')}_copy${file.name.match(/\.(jsx?|css|html|py|txt)$/)?.[0] || ''}`;
+    setClipboard({ file, operation: 'copy' });
 
     try {
-      const res = await fetch("http://localhost:5000/create_file", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      if (file && file.content) await navigator.clipboard.writeText(file.content);
+    } catch (e) {
+      // ignore
+    }
+
+    setContextMenu(null);
+  };
+
+  const handleCut = (file) => {
+    setClipboard({ file, operation: 'cut' });
+    setContextMenu(null);
+  };
+
+  const handlePaste = async (targetFile) => {
+    if (!clipboard || !clipboard.file) return;
+
+    const targetFolder = getContextMenuTargetFolder(targetFile);
+
+    try {
+      if (clipboard.operation === 'cut') {
+        const sourceFile = clipboard.file;
+        const sourceParts = sourceFile.name.split('/');
+        sourceParts.pop();
+        const sourceFolder = sourceParts.length > 0 ? sourceParts.join('/') : '';
+
+        if (sourceFolder === (targetFolder || '')) {
+          console.log('Source and target folders are the same, skipping move');
+          return;
+        }
+
+        await moveFile(sourceFile.id, targetFolder);
+        setClipboard(null);
+        fetchProjects();
+
+      } else if (clipboard.operation === 'copy') {
+        const src = clipboard.file;
+        const base = src.name.split('/').pop();
+        const match = base.match(/^(.*?)(\.(jsx?|css|html|py|txt|json|md))?$/i);
+        const baseName = match ? match[1] : base;
+        const ext = match && match[2] ? match[2] : '';
+
+        let candidate = base;
+        let attempt = 0;
+
+        const exists = (fullPath) => files.some(f => f.name === fullPath);
+
+        let targetFull = targetFolder ? `${targetFolder}/${candidate}` : candidate;
+
+        while (exists(targetFull)) {
+          attempt += 1;
+          candidate = attempt === 1
+            ? `${baseName}_copy${ext}`
+            : `${baseName}_copy${attempt}${ext}`;
+          targetFull = targetFolder ? `${targetFolder}/${candidate}` : candidate;
+        }
+
+        try {
+          const res = await fetch('http://localhost:5000/create_file', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              project: currentProject,
+              name: targetFull,
+              content: src.content || ''
+            })
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            const updated = [...files, {
+              ...data,
+              displayName: candidate
+            }];
+            setFiles(updated);
+            setFileTree(buildFileTree(updated));
+            setSelectedFile(data.id);
+            fetchProjects();
+          } else {
+            const errorData = await res.json();
+            console.error('Failed to paste (copy) file:', errorData.error || 'Unknown error');
+          }
+        } catch (err) {
+          console.error('Error creating file during paste:', err);
+        }
+      }
+    } catch (err) {
+      console.error('Error during paste:', err);
+    }
+
+    setContextMenu(null);
+  };
+
+  const getContextMenuTargetFolder = (file) => {
+    if (!file) return '';
+    if (file.isFolder) {
+      return file.path || file.name || '';
+    }
+    if (file.name) {
+      const parts = file.name.split('/');
+      if (parts.length === 1) return '';
+      parts.pop();
+      return parts.join('/');
+    }
+    return '';
+  };
+
+  const moveFile = async (fileId, targetFolder) => {
+    const file = files.find(f => f.id === fileId);
+    if (!file) {
+      console.error('File not found:', fileId);
+      return;
+    }
+
+    const sourceFolder = getContextMenuTargetFolder({ name: file.name });
+    if (sourceFolder === targetFolder) {
+      console.log('Source and target folders are the same, skipping move');
+      return;
+    }
+
+    try {
+      const res = await fetch('http://localhost:5000/move_file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           project: currentProject,
-          name: newName,
-          content: file.content,
-        }),
+          source: file.name,
+          targetFolder: targetFolder || ''
+        })
       });
 
       if (res.ok) {
-        const data = await res.json();
-        setFiles(prev => [...prev, data]);
+        const base = file.name.split('/').pop();
+        const newName = targetFolder ? `${targetFolder}/${base}` : base;
+
+        const updatedFiles = files.map(f =>
+          f.id === fileId
+            ? { ...f, name: newName, displayName: base }
+            : f
+        );
+
+        setFiles(updatedFiles);
+        setFileTree(buildFileTree(updatedFiles));
+        setSelectedFile(fileId);
+
+        if (clipboard && clipboard.file.id === fileId) {
+          setClipboard({
+            ...clipboard,
+            file: { ...clipboard.file, name: newName }
+          });
+        }
+
+        fetchProjects();
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        console.error('Failed to move file:', errorData.error || 'Unknown error');
       }
     } catch (err) {
-      console.error("Error copying file:", err);
+      console.error('Error moving file:', err);
     }
-    setContextMenu(null);
   };
 
   const handleDelete = async (fileId) => {
@@ -743,11 +1226,15 @@ export default function DevDostAI() {
       });
 
       if (res.ok) {
-        setFiles(files.filter(f => f.id !== fileId));
+        const updated = files.filter(f => f.id !== fileId);
+        setFiles(updated);
+        setFileTree(buildFileTree(updated));
+
         if (selectedFile === fileId) {
-          const remainingFiles = files.filter(f => f.id !== fileId);
-          setSelectedFile(remainingFiles[0]?.id || null);
+          setSelectedFile(updated[0]?.id || null);
         }
+
+        fetchProjects();
       }
     } catch (err) {
       console.error("Error deleting file:", err);
@@ -848,8 +1335,11 @@ export default function DevDostAI() {
 
         if (res.ok) {
           const data = await res.json();
-          setFiles(prev => [...prev, data]);
+          const updated = [...files, data];
+          setFiles(updated);
+          setFileTree(buildFileTree(updated));
           setSelectedFile(data.id);
+          fetchProjects();
         }
       } catch (err) {
         console.error("Error creating file:", err);
@@ -861,7 +1351,7 @@ export default function DevDostAI() {
   const selectedFileData = files.find(f => f.id === selectedFile);
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-purple-50/30 via-white to-blue-50/30">
+    <div className="flex h-screen bg-gradient-to-br from-purple-50/30 via-white to-blue-50">
       {/* Sidebar */}
       <aside className="w-20 bg-white/80 backdrop-blur-xl border-r border-gray-200/50 flex flex-col items-center py-6 gap-8">
         <div className="w-12 h-12 bg-gradient-to-br from-purple-400 to-pink-400 rounded-2xl flex items-center justify-center shadow-lg hover:scale-110 transition-transform cursor-pointer">
@@ -944,7 +1434,7 @@ export default function DevDostAI() {
               </div>
             )}
 
-            {completedNodes.length > 0 && (
+            {completedNodes.length > 0 && !agentProgress.visible &&  (
               <div className="flex items-center gap-2">
                 {completedNodes.slice(-3).map((node, idx) => (
                   <div key={idx} className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-lg">
@@ -995,7 +1485,7 @@ export default function DevDostAI() {
 
         {/* Content Area */}
         <div className="flex-1 flex overflow-hidden">
-          {/* ✅ Projects Tab */}
+          {/* Projects Tab */}
           {activeTab === 'projects' && (
             <div className="flex-1 overflow-auto p-8">
               <div className="max-w-7xl mx-auto">
@@ -1087,10 +1577,9 @@ export default function DevDostAI() {
             </div>
           )}
 
-          {/* ✅ Code Tab - WITH File Explorer */}
+          {/* Code Tab */}
           {activeTab === 'code' && (
             <>
-              {/* Left Panel - File Explorer (ONLY in Code tab) */}
               <div className="w-80 bg-white/80 backdrop-blur-xl border-r border-gray-200/50 flex flex-col">
                 <div className="p-4 border-b border-gray-200/50 flex items-center justify-between">
                   <h2 className="font-semibold text-gray-800 flex items-center gap-2">
@@ -1121,12 +1610,20 @@ export default function DevDostAI() {
                       onFileSelect={setSelectedFile}
                       selectedFileId={selectedFile}
                       onContextMenu={handleContextMenu}
+                      renamingFile={renamingFile}
+                      newFileName={newFileName}
+                      setNewFileName={setNewFileName}
+                      confirmRename={confirmRename}
+                      setRenamingFile={setRenamingFile}
+                      collapsedMap={folderCollapsed}
+                      setCollapsedMap={setFolderCollapsed}
+                      onMoveFile={moveFile}
+                      basePath={''}
                     />
                   )}
                 </div>
               </div>
 
-              {/* Center Panel - Code Editor */}
               <div className="flex-1 flex flex-col">
                 {selectedFileData ? (
                   <>
@@ -1146,9 +1643,10 @@ export default function DevDostAI() {
 
                     <div className="flex-1 overflow-hidden">
                       <textarea
-                        value={selectedFileData.content}
+                        value={currentTypingFile === selectedFileData.id && isTyping ? typingContent : selectedFileData.content}
                         onChange={(e) => handleFileContentChange(e.target.value)}
-                        className="w-full h-full p-6 bg-gray-50/50 font-mono text-sm text-gray-800 resize-none focus:outline-none"
+                        className={`w-full h-full p-6 bg-gray-50/50 font-mono text-sm text-gray-800 resize-none focus:outline-none ${currentTypingFile === selectedFileData.id && isTyping ? 'typing-animation' : ''
+                          }`}
                         spellCheck="false"
                       />
                     </div>
@@ -1167,10 +1665,35 @@ export default function DevDostAI() {
             </>
           )}
 
-          {/* ✅ Preview Tab - NO File Explorer */}
+          {/* Preview Tab */}
+          {/* Preview Tab */}
           {activeTab === 'preview' && (
             <div className="flex-1 flex flex-col bg-white">
-              {currentProject && !projectReady && currentNode ? (
+              {/* ✅ Show message if project not running */}
+              {!isRunning ? (
+                <div className="flex-1 flex items-center justify-center text-gray-400">
+                  <div className="text-center space-y-4">
+                    <Eye className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                    <h3 className="text-xl font-semibold text-gray-800">Preview Not Available</h3>
+                    <p className="text-sm text-gray-600 max-w-md">
+                      {currentProject
+                        ? 'Click the Run button in the header to start the project and see live preview'
+                        : 'Select a project first to see preview'
+                      }
+                    </p>
+                    {currentProject && (
+                      <button
+                        onClick={handleRunStopProject}
+                        className="px-6 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl hover:shadow-lg hover:scale-105 transition-all font-medium flex items-center gap-2 mx-auto mt-4"
+                      >
+                        <Play className="w-5 h-5" />
+                        Run Project to Preview
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : currentProject && !projectReady && currentNode ? (
+                /* Building animation */
                 <div className="flex-1 flex items-center justify-center">
                   <div className="text-center space-y-4">
                     <Loader2 className="w-12 h-12 text-purple-600 animate-spin mx-auto" />
@@ -1190,18 +1713,42 @@ export default function DevDostAI() {
                   </div>
                 </div>
               ) : previewHTML ? (
-                <iframe
-                  ref={iframeRef}
-                  srcDoc={previewHTML}
-                  className="w-full h-full border-0"
-                  title="Preview"
-                />
+                /* ✅ Show preview only if running or HTML available */
+                <>
+                  {/* Preview toolbar */}
+                  <div className="h-12 bg-gray-50 border-b border-gray-200 flex items-center justify-between px-4">
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <div className={`w-2 h-2 rounded-full ${isRunning ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
+                      {isRunning ? 'Live Preview' : 'Static Preview'}
+                    </div>
+                    {isRunning && (
+                      <button
+                        onClick={() => {
+                          if (iframeRef.current) {
+                            iframeRef.current.src = iframeRef.current.src; // Refresh
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        Refresh
+                      </button>
+                    )}
+                  </div>
+                  <iframe
+                    ref={iframeRef}
+                    srcDoc={previewHTML}
+                    className="w-full h-full border-0"
+                    title="Preview"
+                  />
+                </>
               ) : (
+                /* No preview available */
                 <div className="flex-1 flex items-center justify-center text-gray-400">
                   <div className="text-center">
                     <Eye className="w-12 h-12 mx-auto mb-3 opacity-50" />
                     <p className="text-sm">
-                      {currentProject ? 'Run the project to see preview' : 'Select a project first'}
+                      {currentProject ? 'No preview available yet' : 'Select a project first'}
                     </p>
                   </div>
                 </div>
@@ -1209,14 +1756,77 @@ export default function DevDostAI() {
             </div>
           )}
 
-          {/* Right Panel - Chat (Always visible) */}
+          {/* Right Panel - Chat */}
           <div className="w-96 bg-white/80 backdrop-blur-xl border-l border-gray-200/50 flex flex-col">
-            <div className="p-4 border-b border-gray-200/50">
+            <div className="p-4 border-b border-gray-200/50 flex items-center justify-between">
               <h2 className="font-semibold text-gray-800 flex items-center gap-2">
                 <MessageSquare className="w-4 h-4 text-purple-600" />
-                AI Assistant
+                {currentChat.name}
               </h2>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowChatHistory(!showChatHistory)}
+                  className="p-2 hover:bg-purple-50 rounded-lg transition-colors"
+                  title="Chat History"
+                >
+                  <History className="w-4 h-4 text-purple-600" />
+                </button>
+                <button
+                  onClick={createNewChat}
+                  className="p-2 hover:bg-purple-50 rounded-lg transition-colors"
+                  title="New Chat"
+                >
+                  <Plus className="w-4 h-4 text-purple-600" />
+                </button>
+              </div>
             </div>
+
+            {/* ✅ NEW: Chat History Dropdown */}
+            {showChatHistory && (
+              <div className="absolute top-16 right-0 w-80 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 max-h-96 overflow-auto m-4">
+                <div className="p-4 border-b border-gray-200">
+                  <h3 className="font-semibold text-gray-800">Chat History</h3>
+                </div>
+                <div className="p-2">
+                  {chats.map((chat) => (
+                    <div
+                      key={chat.id}
+                      className={`flex items-center justify-between p-3 rounded-lg hover:bg-purple-50 cursor-pointer ${chat.id === currentChatId ? 'bg-purple-100' : ''
+                        }`}
+                    >
+                      <button
+                        onClick={() => {
+                          setCurrentChatId(chat.id);
+                          setShowChatHistory(false);
+                        }}
+                        className="flex-1 text-left"
+                      >
+                        <div className="font-medium text-gray-800 truncate">{chat.name}</div>
+                        <div className="text-xs text-gray-500">
+                          {new Date(chat.timestamp).toLocaleString()}
+                        </div>
+                        {chat.currentProject && (
+                          <div className="text-xs text-purple-600 mt-1">
+                            Project: {chat.currentProject}
+                          </div>
+                        )}
+                      </button>
+                      {chats.length > 1 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteChat(chat.id);
+                          }}
+                          className="p-1 hover:bg-red-100 rounded transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-600" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="flex-1 overflow-auto p-4 space-y-4">
               {chatMessages.map((msg, idx) => (
@@ -1240,7 +1850,7 @@ export default function DevDostAI() {
             <div className="p-4 border-t border-gray-200/50">
               <div className="flex gap-2">
                 <input
-                ref={inputRef}
+                  ref={inputRef}
                   type="text"
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
@@ -1324,6 +1934,22 @@ export default function DevDostAI() {
               Copy
             </button>
             <button
+              onClick={() => handleCut(contextMenu.file)}
+              className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 flex items-center gap-3"
+            >
+              <Scissors className="w-4 h-4 text-red-600" />
+              Cut
+            </button>
+            {clipboard && (
+              <button
+                onClick={() => handlePaste(contextMenu.file)}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-green-50 flex items-center gap-3"
+              >
+                <Clipboard className="w-4 h-4 text-green-600" />
+                Paste
+              </button>
+            )}
+            <button
               onClick={() => handleDelete(contextMenu.file.id)}
               className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 flex items-center gap-3"
             >
@@ -1373,4 +1999,23 @@ export default function DevDostAI() {
       )}
     </div>
   );
+}
+
+class ErrorBoundary extends Component {
+  state = { hasError: false };
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Error caught by boundary:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <div>Something went wrong. Please refresh the page.</div>;
+    }
+    return this.props.children;
+  }
 }

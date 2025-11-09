@@ -1,4 +1,4 @@
-```javascript
+
 // Get the input field and todo list elements
 const inputField = document.getElementById('todo-input');
 const todoList = document.getElementById('todo-list');
@@ -60,4 +60,3 @@ todoList.addEventListener('click', (e) => {
         deleteTodo(index);
     }
 });
-```

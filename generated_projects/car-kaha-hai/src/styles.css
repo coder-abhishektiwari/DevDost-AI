@@ -1,0 +1,85 @@
+```css
+/* -------------------------------------------------
+   Global Reset
+------------------------------------------------- */
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* -------------------------------------------------
+   Base Styles
+------------------------------------------------- */
+html {
+  font-size: 100%; /* 16px default */
+}
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: #f5f5f5;
+  color: #333;
+  line-height: 1.5;
+}
+
+/* -------------------------------------------------
+   Layout Containers
+------------------------------------------------- */
+.app-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+/* Grid wrapper for map & info sections */
+.app-container .layout {
+  display: grid;
+  gap: 1rem;
+}
+
+/* -------------------------------------------------
+   UI Components
+------------------------------------------------- */
+.search-bar {
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.search-bar input {
+  width: 100%;
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+/* Map & Info panels */
+.map-container,
+.info-container {
+  background: #fff;
+  padding: 1rem;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* -------------------------------------------------
+   Responsive Grid
+------------------------------------------------- */
+
+/* Mobile – stack vertically */
+@media (max-width: 767px) {
+  .app-container .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Desktop – side‑by‑side */
+@media (min-width: 768px) {
+  .app-container .layout {
+    grid-template-columns: 2fr 1fr; /* map larger than info */
+  }
+}
+```

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Portfolio</title>
+    <link rel="stylesheet" href="main.css">
+</head>
+<body>
+    <!-- Header & Navigation -->
+    <header>
+        <div class="container">
+            <h1 class="logo"><a href="#">MyPortfolio</a></h1>
+            <nav aria-label="Primary Navigation">
+                <ul class="nav-list">
+                    <li><a href="#hero">Home</a></li>
+                    <li><a href="#projects">Projects</a></li>
+                    <li><a href="#about">About</a></li>
+                    <li><a href="#contact">Contact</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section id="hero">
+        <div class="container">
+            <h2>Hi, I'm Jane Doe</h2>
+            <p>Front‑end Developer & Designer crafting beautiful web experiences.</p>
+            <a href="#projects" class="btn-primary">View My Work</a>
+        </div>
+    </section>
+
+    <!-- Projects Section -->
+    <section id="projects">
+        <div class="container">
+            <h2>Projects</h2>
+            <div class="project-grid">
+                <article class="project-card">
+                    <img src="images/project1.jpg" alt="Project 1 screenshot">
+                    <h3>Project One</h3>
+                    <p>A responsive web app built with HTML, CSS, and JavaScript.</p>
+                    <a href="#" class="btn-secondary">Learn More</a>
+                </article>
+                <article class="project-card">
+                    <img src="images/project2.jpg" alt="Project 2 screenshot">
+                    <h3>Project Two</h3>
+                    <p>E‑commerce platform featuring a custom checkout flow.</p>
+                    <a href="#" class="btn-secondary">Learn More</a>
+                </article>
+                <article class="project-card">
+                    <img src="images/project3.jpg" alt="Project 3 screenshot">
+                    <h3>Project Three</h3>
+                    <p>Interactive data visualization using D3.js.</p>
+                    <a href="#" class="btn-secondary">Learn More</a>
+                </article>
+            </div>
+        </div>
+    </section>
+
+    <!-- About Section -->
+    <section id="about">
+        <div class="container">
+            <h2>About Me</h2>
+            <p>
+                I'm a passionate developer with a love for clean code and intuitive design.
+                Over the past 5 years I've worked on a variety of web projects ranging from
+                single‑page applications to large‑scale platforms. When I'm not coding,
+                you can find me hiking, reading, or experimenting with new UI trends.
+            </p>
+        </div>
+    </section>
+
+    <!-- Contact Section -->
+    <section id="contact">
+        <div class="container">
+            <h2>Contact</h2>
+            <form action="#" method="post" novalidate>
+                <div class="form-group">
+                    <label for="name">Name</label>
+                    <input type="text" id="name" name="name" required placeholder="Your name">
+                </div>
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" required placeholder="you@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="message">Message</label>
+                    <textarea id="message" name="message" rows="5" required placeholder="Your message"></textarea>
+                </div>
+                <button type="submit" class="btn-primary">Send Message</button>
+            </form>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <p>&copy; <script>document.write(new Date().getFullYear());</script> Jane Doe. All rights reserved.</p>
+            <ul class="social-links">
+                <li><a href="#" aria-label="LinkedIn">LinkedIn</a></li>
+                <li><a href="#" aria-label="GitHub">GitHub</a></li>
+                <li><a href="#" aria-label="Twitter">Twitter</a></li>
+            </ul>
+        </div>
+    </footer>
+</body>
+</html>

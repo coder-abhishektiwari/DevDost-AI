@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import tempfile
 import psutil
+import uuid
 
 try:
     from graph import agent
@@ -28,6 +29,7 @@ CURRENT_PROJECTS = {}
 RUNNING_PROCESSES = {}
 MAX_FILE_SIZE = 1024 * 1024
 
+# ==================================================USABLE FUNCTIONS=================================================
 def safe_write_file(file_path, content):
     """Atomically write file to prevent corruption"""
     file_path = Path(file_path)
@@ -87,8 +89,8 @@ def get_all_files(project_name=None):
 
                     rel_path = os.path.relpath(file_path, project_path)
                     files_data.append({
-                        "id": file_id,
-                        "name": rel_path,
+                        "id": str(uuid.uuid4()),                # << uuid instead of incrementing int
+                        "name": rel_path.replace("\\", "/"),
                         "project": proj,
                         "type": "file",
                         "content": content,
@@ -130,6 +132,98 @@ def detect_project_type(project_path):
 
     return "unknown"
 
+def stop_project(project_name):
+    """Stop a running project and ALL child processes"""
+    if project_name in RUNNING_PROCESSES:
+        process = RUNNING_PROCESSES[project_name]
+
+        try:
+            parent = psutil.Process(process.pid)
+            children = parent.children(recursive=True)
+
+            for child in children:
+                try:
+                    child.terminate()
+                except psutil.NoSuchProcess:
+                    pass
+
+            parent.terminate()
+
+            gone, alive = psutil.wait_procs([parent] + children, timeout=5)
+
+            for p in alive:
+                try:
+                    p.kill()
+                except psutil.NoSuchProcess:
+                    pass
+
+        except psutil.NoSuchProcess:
+            pass
+        except Exception as e:
+            print(f"⚠️ Stop error: {e}")
+        finally:
+            del RUNNING_PROCESSES[project_name]
+            print(f"🛑 Stopped: {project_name}")
+            socketio.emit("project_status", {
+                "project": project_name,
+                "status": "stopped",
+                "message": "Project stopped"
+            })
+
+def generate_chat_name_with_groq(user_message):
+    """
+    Generate chat name using YOUR EXISTING llm_fast
+    """
+    try:
+        prompt = f"""Generate a very short (2-4 words maximum) descriptive title for this chat:
+
+User message: "{user_message}"
+
+Rules:
+- Maximum 4 words
+- Be specific and clear
+- Use title case
+- NO quotes, NO special characters
+
+Examples:
+- "create a todo app" → React Todo App
+- "help me fix python bug" → Python Bug Fix
+- "build portfolio website" → Portfolio Website
+
+Return ONLY the title:"""
+
+        # ✅ ChatGroq (LangChain) syntax
+        response = llm_fast.invoke(prompt)  # Simple invoke
+        
+        # Extract content
+        name = response.content.strip()
+        
+        # Clean up
+        name = name.replace('"', '').replace("'", '').replace('*', '')
+        
+        # Limit length
+        if len(name) > 40:
+            name = name[:40].rsplit(' ', 1)[0]
+        
+        print(f"✅ Generated chat name: {name}")
+        return name if name else fallback_chat_name(user_message)
+        
+    except Exception as e:
+        print(f"⚠️ Groq naming error: {e}")
+        return fallback_chat_name(user_message)
+
+def fallback_chat_name(message):
+    """Fallback if Groq fails"""
+    stop_words = {'create', 'make', 'build', 'a', 'an', 'the', 'for', 'me', 'please', 'can', 'you', 'help'}
+    words = message.lower().split()
+    keywords = [w.capitalize() for w in words if w not in stop_words][:3]
+    
+    if keywords:
+        return ' '.join(keywords)[:30]
+    
+    return message[:30].strip().capitalize() or "New Chat"
+
+# ===================================================API ENDPOINTS===================================================
 @app.route("/test", methods=["GET"])
 def test():
     """Test endpoint"""
@@ -144,15 +238,36 @@ def handle_chat_message(data):
     try:
         user_message = data.get("message", "")
         session_id = data.get("session_id", "default")
+        
+        # ✅ NEW: Get chat metadata
+        chat_id = data.get("chat_id")
+        is_first_message = data.get("is_first_message", False)
 
         print("\n" + "="*60)
         print(f"💬 USER: {user_message}")
         print(f"🆔 Session: {session_id}")
+        print(f"🆔 Chat ID: {chat_id}")  # ✅ NEW
+        print(f"🎯 First message: {is_first_message}")  # ✅ NEW
         print("="*60 + "\n")
 
         current_project = CURRENT_PROJECTS.get(session_id)
 
-        # ✅ realtime progress callback (MOST IMPORTANT)
+        # ✅ NEW: Generate chat name FIRST if first message (runs fast in background)
+        if is_first_message and chat_id:
+            try:
+                print("📝 Generating chat name with Groq...")
+                chat_name = generate_chat_name_with_groq(user_message)
+                
+                # Emit name immediately
+                socketio.emit("chat_name_generated", {
+                    "chat_id": chat_id,
+                    "name": chat_name
+                })
+                print(f"✅ Chat name sent: {chat_name}")
+            except Exception as e:
+                print(f"⚠️ Chat naming skipped: {e}")
+
+        # ✅ Rest of your existing code remains EXACTLY THE SAME
         def emit_progress_local(message, project_name=None, stage=None, thinking=False):
             payload = {
                 "message": message,
@@ -170,20 +285,17 @@ def handle_chat_message(data):
             socketio.emit("ai_progress", payload, broadcast=True)
             socketio.sleep(0.05)
 
-        # ✅ state inject
         state = {
             "user_prompt": user_message,
             "current_project": current_project,
             "chat_history": data.get("chat_history", []),
-            "_emit_progress": emit_progress_local  # <- LIFELINE
+            "_emit_progress": emit_progress_local
         }
 
-        # agent START
         socketio.emit("agent_started", {"message": "Processing..."})
 
         result = agent.invoke(state, config={"recursion_limit":100})
 
-        # session save
         if result.get("current_project"):
             CURRENT_PROJECTS[session_id] = result["current_project"]
 
@@ -196,7 +308,6 @@ def handle_chat_message(data):
         if not response_message:
             response_message = "✅ Completed"
 
-        # FINAL RESPONSE
         socketio.emit("chat_response", {
             "success": True,
             "message": response_message,
@@ -289,44 +400,6 @@ def switch_project(project_name):
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-def stop_project(project_name):
-    """Stop a running project and ALL child processes"""
-    if project_name in RUNNING_PROCESSES:
-        process = RUNNING_PROCESSES[project_name]
-
-        try:
-            parent = psutil.Process(process.pid)
-            children = parent.children(recursive=True)
-
-            for child in children:
-                try:
-                    child.terminate()
-                except psutil.NoSuchProcess:
-                    pass
-
-            parent.terminate()
-
-            gone, alive = psutil.wait_procs([parent] + children, timeout=5)
-
-            for p in alive:
-                try:
-                    p.kill()
-                except psutil.NoSuchProcess:
-                    pass
-
-        except psutil.NoSuchProcess:
-            pass
-        except Exception as e:
-            print(f"⚠️ Stop error: {e}")
-        finally:
-            del RUNNING_PROCESSES[project_name]
-            print(f"🛑 Stopped: {project_name}")
-            socketio.emit("project_status", {
-                "project": project_name,
-                "status": "stopped",
-                "message": "Project stopped"
-            })
 
 @app.route("/run_project", methods=["POST"])
 def run_project():
@@ -481,7 +554,14 @@ def create_file():
         files = get_all_files(project_name)
         new_file = next((f for f in files if f["name"] == name), None)
 
-        socketio.emit("file_created", new_file)
+        file_data = {
+            "id": str(uuid.uuid4()),
+            "project": project_name,
+            "name": name,
+            "content": content
+        }
+
+        socketio.emit("file_created", file_data, broadcast=True)
 
         return jsonify(new_file), 201
     except Exception as e:
@@ -531,7 +611,10 @@ def delete_file():
         else:
             shutil.rmtree(file_path)
 
-        socketio.emit("file_deleted", {"project": project_name, "name": name})
+        socketio.emit("file_deleted", {
+            "id": str(uuid.uuid4()),
+            "project": project_name, 
+            "name": name})
 
         return jsonify({"success": True})
     except Exception as e:
@@ -560,6 +643,7 @@ def rename_file():
         old_path.rename(new_path)
 
         socketio.emit("file_renamed", {
+            "id": str(uuid.uuid4()),
             "project": project_name,
             "oldName": old_name,
             "newName": new_name
@@ -609,6 +693,7 @@ def handle_update(data):
         safe_write_file(file_path, content)
 
         emit("file_updated", {
+            "id": str(uuid.uuid4()),
             "project": project_name,
             "name": name,
             "content": content
@@ -617,12 +702,18 @@ def handle_update(data):
     except Exception as e:
         print(f"❌ Socket error: {e}")
 
+# ============================================FILE HANDLING FOR TWO WAY SYNC============================================
+
 class FileChangeHandler(FileSystemEventHandler):
     def __init__(self):
         self.last_modified = {}
 
     def on_any_event(self, event):
         if event.is_directory:
+            return
+
+        # ignore our atomic temp files
+        if Path(event.src_path).name.startswith(".tmp_"):
             return
 
         now = time.time()
@@ -640,20 +731,25 @@ class FileChangeHandler(FileSystemEventHandler):
                 project_name = rel_path.split(os.sep)[0]
                 file_rel_path = os.sep.join(rel_path.split(os.sep)[1:])
 
-                with open(event.src_path, "r", encoding="utf-8") as f:
-                    content = f.read()
+                # best-effort text read
+                try:
+                    with open(event.src_path, "r", encoding="utf-8") as f:
+                        content = f.read()
+                except UnicodeDecodeError:
+                    return  # skip binary
+
+                payload = {
+                    "id": str(uuid.uuid4()),
+                    "project": project_name,
+                    "name": file_rel_path,   # << correct variable
+                    "content": content
+                }
 
                 if event.event_type == "created":
-                    files = get_all_files(project_name)
-                    new_file = next((f for f in files if f["name"] == file_rel_path), None)
-                    if new_file:
-                        socketio.emit("file_created", new_file)
+                    socketio.emit("file_created", payload, broadcast=True)
                 else:
-                    socketio.emit("file_updated", {
-                        "project": project_name,
-                        "name": file_rel_path,
-                        "content": content
-                    })
+                    socketio.emit("file_updated", payload, broadcast=True)
+
             except Exception as e:
                 print(f"❌ Watcher error: {e}")
 
