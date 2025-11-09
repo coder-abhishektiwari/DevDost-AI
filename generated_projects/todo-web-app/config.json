@@ -1,6 +1,0 @@
-```json
-{
-  "apiEndpoint": "https://api.todo-web-app.com/api",
-  "authEndpoint": "https://api.todo-web-app.com/auth"
-}
-```
